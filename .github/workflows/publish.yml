@@ -37,23 +37,20 @@ jobs:
       shell: pwsh
       run: |
         $lastTag = git describe --tags --abbrev=0 2>$null
-        if ($lastTag) {
-          $range = "$lastTag..HEAD"
-        } else {
-          $range = "HEAD"
-        }
+        $range = if ($lastTag) { "$lastTag..HEAD" } else { "HEAD" }
         
         $commits = git log $range --pretty=format:"%h|%s|%an" --reverse | ForEach-Object {
           $hash, $message, $author = $_ -split "\|"
-          
           $cleanMessage = $message -replace '^(feat|fix|chore|docs|style|refactor|perf|test|ci)(\(.+\))?!?: ',''
-          "- $cleanMessage ([${hash}](../../commit/$hash))"
+          "- $cleanMessage ([${hash}](../../commit/$hash)) - [@${author}](https://github.com/${author})"
         }
         
-        $contributors = git log $range --format='%an' | Sort-Object -Unique | ForEach-Object { "- $_" }
+        $contributors = git log $range --format:'%an' | Sort-Object -Unique | ForEach-Object {
+          "- [@${_}](https://github.com/${_})"
+        }
         
         $changelogContent = @"
-        ## What's Changed
+        ## What Changed
         
         ### Changes
         $($commits -join "`n")
