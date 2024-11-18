@@ -1,0 +1,31 @@
+﻿mode: Mainline
+assembly-versioning-scheme: MajorMinorPatch
+assembly-file-versioning-scheme: MajorMinorPatch
+increment: Patch
+tag-prefix: 'v'
+major-version-bump-message: '^(breaking|major):'
+minor-version-bump-message: '^feat:'
+patch-version-bump-message: '^(fix|chore|style|refactor|test):'
+no-bump-message: '^(docs|ci):'
+commit-message-incrementing: Enabled
+branches:
+  master:
+    regex: ^master$|^main$
+    is-mainline: true
+    increment: Patch
+    prevent-increment-of-merged-branch-version: true
+  feature:
+    regex: ^features?[/-]
+    increment: Minor
+    source-branches: ['master', 'main']
+  hotfix:
+    regex: ^hotfix[/-]
+    increment: Patch
+    source-branches: ['master', 'main']
+  develop:
+    regex: ^dev(elop)?$
+    increment: Minor
+    track-merge-target: true
+ignore:
+  sha: []
+merge-message-formats: {}
