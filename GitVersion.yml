@@ -17,11 +17,13 @@ branches:
     increment: Patch
     track-merge-target: true
     is-release-branch: true
+    is-mainline: true
   develop:
     regex: ^dev(elop)?$
     mode: ContinuousDeployment
     increment: Minor
     track-merge-target: true
+    tracks-release-branches: true
     source-branches: ['master']
   feature:
     regex: ^features?[/-]
@@ -33,12 +35,14 @@ branches:
     increment: Patch
     source-branches: ['master']
     track-merge-target: true
+    tracks-release-branches: true
     is-release-branch: true
   release:
     regex: ^releases?[/-]
     mode: ContinuousDeployment
     increment: None
     source-branches: ['develop']
+    tracks-release-branches: false
     is-release-branch: true
 ignore:
   sha: []
