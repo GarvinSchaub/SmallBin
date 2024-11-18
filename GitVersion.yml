@@ -2,14 +2,11 @@ mode: Mainline
 assembly-versioning-scheme: MajorMinorPatch
 assembly-file-versioning-scheme: MajorMinorPatch
 tag-prefix: '[vV]'
-version-in-branch-pattern: (?<version>[vV]\d+\.\d+\.\d+)
-commit-date-format: yyyy-MM-dd
 major-version-bump-message: '\+semver:\s?(breaking|major)'
 minor-version-bump-message: '\+semver:\s?(feature|minor)'
 patch-version-bump-message: '\+semver:\s?(fix|patch)'
 no-bump-message: '\+semver:\s?(none|skip)'
 commit-message-incrementing: Enabled
-update-build-number: true
 next-version: 1.0.0
 branches:
   master:
@@ -22,7 +19,6 @@ branches:
   develop:
     regex: ^dev(elop)?$
     mode: ContinuousDeployment
-    pre-release-identifier: alpha
     increment: Minor
     prevent-increment-of-merged-branch-version: true
     track-merge-target: true
@@ -30,12 +26,10 @@ branches:
   feature:
     regex: ^features?[/-]
     mode: ContinuousDeployment
-    pre-release-identifier: feature.{BranchName}
     increment: Inherit
     source-branches: ['develop']
   hotfix:
     regex: ^hotfix(es)?[/-]
-    pre-release-identifier: beta
     increment: Patch
     prevent-increment-of-merged-branch-version: true
     source-branches: ['master']
@@ -44,7 +38,6 @@ branches:
   release:
     regex: ^releases?[/-]
     mode: ContinuousDeployment
-    pre-release-identifier: rc
     increment: None
     source-branches: ['develop']
     is-release-branch: true
