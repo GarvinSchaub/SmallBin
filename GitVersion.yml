@@ -8,19 +8,20 @@ patch-version-bump-message: '\+semver:\s?(fix|patch)'
 no-bump-message: '\+semver:\s?(none|skip)'
 commit-message-incrementing: Enabled
 next-version: 1.0.0
+prevent-increment:
+  of-merged-branch: false
+  when-branch-merged: false
 branches:
   master:
     regex: ^master$
     mode: ContinuousDelivery
     increment: Patch
-    prevent-increment-of-merged-branch-version: true
     track-merge-target: true
     is-release-branch: true
   develop:
     regex: ^dev(elop)?$
     mode: ContinuousDeployment
     increment: Minor
-    prevent-increment-of-merged-branch-version: true
     track-merge-target: true
     source-branches: ['master']
   feature:
@@ -31,7 +32,6 @@ branches:
   hotfix:
     regex: ^hotfix(es)?[/-]
     increment: Patch
-    prevent-increment-of-merged-branch-version: true
     source-branches: ['master']
     track-merge-target: true
     is-release-branch: true
