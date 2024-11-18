@@ -17,7 +17,6 @@ branches:
     increment: Patch
     track-merge-target: true
     is-release-branch: true
-    is-mainline: true
   develop:
     regex: ^dev(elop)?$
     mode: ContinuousDeployment
