@@ -1,0 +1,120 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+      - '.github/**'
+      - '!.github/workflows/**'
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: '7.0.x'
+
+    - name: Get and increment version
+      id: version
+      run: |
+        if (!(Test-Path "version.txt")) {
+          echo "1.0.0" > version.txt
+        }
+        $version = Get-Content "version.txt"
+        $parts = $version.Split('.')
+        $patch = [int]$parts[2] + 1
+        $newVersion = "$($parts[0]).$($parts[1]).$patch"
+        echo "version=$newVersion" >> $env:GITHUB_OUTPUT
+        echo $newVersion > version.txt
+
+    - name: Generate changelog
+      id: changelog
+      run: |
+        $lastTag = git describe --tags --abbrev=0 2>$null
+        if ($lastTag) {
+          $range = "$lastTag..HEAD"
+        } else {
+          $range = "HEAD"
+        }
+        
+        $changes = git log $range --pretty=format:"- %s (%h) by %an <%ae>" --reverse
+        $fullChangelog = @"
+        ## Changes in this release
+
+        $changes
+
+        ## Contributors
+        $(git log $range --format="- %an <%ae>" | Sort-Object -Unique)
+        "@
+        
+        $fullChangelog | Out-File -FilePath changelog.md -Encoding UTF8
+        $fullChangelog = [System.Web.HttpUtility]::JavaScriptStringEncode($fullChangelog)
+        echo "changelog<<EOF" >> $env:GITHUB_OUTPUT
+        echo $fullChangelog >> $env:GITHUB_OUTPUT
+        echo "EOF" >> $env:GITHUB_OUTPUT
+
+    - name: Build
+      run: |
+        dotnet restore
+        dotnet build --configuration Release /p:Version=${{ steps.version.outputs.version }}
+        dotnet pack --configuration Release /p:Version=${{ steps.version.outputs.version }} --no-build --output nupkg
+
+    - name: Test
+      run: dotnet test --configuration Release --no-build
+
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: v${{ steps.version.outputs.version }}
+        release_name: Release v${{ steps.version.outputs.version }}
+        body: ${{ steps.changelog.outputs.changelog }}
+        draft: false
+        prerelease: false
+
+    - name: Upload Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./nupkg/SmallBin.${{ steps.version.outputs.version }}.nupkg
+        asset_name: SmallBin.${{ steps.version.outputs.version }}.nupkg
+        asset_content_type: application/zip
+
+    - name: Configure Git
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+
+    - name: Update files
+      run: |
+        # Append to CHANGELOG.md
+        if (!(Test-Path "CHANGELOG.md")) {
+          echo "# Changelog" > CHANGELOG.md
+        }
+        $date = Get-Date -Format "yyyy-MM-dd"
+        $version = "${{ steps.version.outputs.version }}"
+        $header = "`n## [$version] - $date`n"
+        $content = Get-Content changelog.md
+        $header | Out-File -Append CHANGELOG.md
+        $content | Out-File -Append CHANGELOG.md
+        
+        # Commit changes
+        git add version.txt CHANGELOG.md
+        git commit -m "Release v${{ steps.version.outputs.version }}"
+        git push
+
+    - name: Push to NuGet
+      run: dotnet nuget push ./nupkg/SmallBin.${{ steps.version.outputs.version }}.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json
