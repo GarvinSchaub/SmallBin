@@ -59,8 +59,13 @@ jobs:
     - name: Build
       run: |
         dotnet restore
-        dotnet build --configuration Release /p:Version=${{ steps.gitversion.outputs.majorMinorPatch }} --output ./artifacts
-        dotnet pack --configuration Release /p:Version=${{ steps.gitversion.outputs.majorMinorPatch }} --no-build --output nupkg
+        dotnet build --configuration Release /p:Version=${{ steps.gitversion.outputs.majorMinorPatch }}
+        dotnet pack --configuration Release /p:Version=${{ steps.gitversion.outputs.majorMinorPatch }} --output nupkg
+    - name: Upload DLL
+      uses: actions/upload-artifact@v4.4.3
+      with:
+        name: SmallBin.dll
+        path: SmallBin/bin/Release/netstandard2.1/SmallBin.dll
     - name: Test
       run: dotnet test --configuration Release --no-build
     - name: Create Release
@@ -73,7 +78,7 @@ jobs:
         draft: false
         prerelease: false
         files: |
-          ./artifacts/SmallBin.dll
           ./nupkg/SmallBin.${{ steps.gitversion.outputs.majorMinorPatch }}.nupkg
+          SmallBin/bin/Release/netstandard2.1/SmallBin.dll
     - name: Push to NuGet
       run: dotnet nuget push ./nupkg/SmallBin.${{ steps.gitversion.outputs.majorMinorPatch }}.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json
