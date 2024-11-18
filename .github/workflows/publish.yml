@@ -39,24 +39,17 @@ jobs:
         $lastTag = git describe --tags --abbrev=0 2>$null
         $range = if ($lastTag) { "$lastTag..HEAD" } else { "HEAD" }
         
-        $commits = git log $range --pretty=format:"%h|%s|%aN" --reverse | ForEach-Object {
-          $hash, $message, $author = $_ -split "\|"
+        $commits = git log $range --pretty=format:"%h|%s" --reverse | ForEach-Object {
+          $hash, $message = $_ -split "\|"
           $cleanMessage = $message -replace '^(feat|fix|chore|docs|style|refactor|perf|test|ci)(\(.+\))?!?: ',''
-          "- $cleanMessage ([${hash}](../../commit/$hash)) - [@${author}](https://github.com/${author})"
-        }
-        
-        $contributors = git log $range --pretty=format:"%aN" | Sort-Object -Unique | ForEach-Object {
-          "- [@${_}](https://github.com/${_})"
+          "- $cleanMessage ([${hash}](../../commit/$hash))"
         }
         
         $changelogContent = @"
-        ## What Changed
+        ## What's Changed
         
         ### Changes
         $($commits -join "`n")
-        
-        ### Contributors
-        $($contributors -join "`n")
         "@
         
         $changelogContent | Out-File -FilePath changelog.md -Encoding UTF8
@@ -66,13 +59,13 @@ jobs:
     - name: Build
       run: |
         dotnet restore
-        dotnet build --configuration Release /p:Version=${{ steps.gitversion.outputs.majorMinorPatch }}
+        dotnet build --configuration Release /p:Version=${{ steps.gitversion.outputs.majorMinorPatch }} --output ./artifacts
         dotnet pack --configuration Release /p:Version=${{ steps.gitversion.outputs.majorMinorPatch }} --no-build --output nupkg
     - name: Test
       run: dotnet test --configuration Release --no-build
     - name: Create Release
       id: create_release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2.1.0
       with:
         tag_name: v${{ steps.gitversion.outputs.majorMinorPatch }}
         name: Release v${{ steps.gitversion.outputs.majorMinorPatch }}
@@ -80,6 +73,7 @@ jobs:
         draft: false
         prerelease: false
         files: |
+          ./artifacts/SmallBin.dll
           ./nupkg/SmallBin.${{ steps.gitversion.outputs.majorMinorPatch }}.nupkg
     - name: Push to NuGet
       run: dotnet nuget push ./nupkg/SmallBin.${{ steps.gitversion.outputs.majorMinorPatch }}.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json
