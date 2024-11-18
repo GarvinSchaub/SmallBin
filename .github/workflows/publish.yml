@@ -57,7 +57,9 @@ jobs:
             $other += "- $message ([${hash}](../../commit/$hash)) - $author"
           }
         }
-
+        
+        $contributors = git log $range --format='%an' | Sort-Object -Unique | ForEach-Object { "- $_" }
+        
         $changelogContent = @"
         ## What's Changed
         
@@ -71,7 +73,7 @@ jobs:
         $($other -join "`n")
         
         ### 👥 Contributors
-        $(git log $range --format:"- %an" | Sort-Object -Unique)
+        $($contributors -join "`n")
         "@
         
         $changelogContent | Out-File -FilePath changelog.md -Encoding UTF8
