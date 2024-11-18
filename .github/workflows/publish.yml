@@ -33,9 +33,9 @@ jobs:
       run: |
         $lastTag = git describe --tags --abbrev=0 2>$null
         if ($lastTag) {
-            $range = "$lastTag..HEAD"
+          $range = "$lastTag..HEAD"
         } else {
-            $range = "HEAD"
+          $range = "HEAD"
         }
         
         $features = @()
@@ -43,36 +43,36 @@ jobs:
         $other = @()
         
         git log $range --pretty=format:"%h|%s|%an" --reverse | ForEach-Object {
-            $hash, $message, $author = $_ -split "\|"
-            
-            if ($message -match "^feat(\(.+\))?!?: ") {
-                $cleanMessage = $message -replace '^feat(\(.+\))?: ',''
-                $features += "- $cleanMessage ([${hash}](../../commit/$hash)) - $author"
-            }
-            elseif ($message -match "^fix(\(.+\))?: ") {
-                $cleanMessage = $message -replace '^fix(\(.+\))?: ',''
-                $fixes += "- $cleanMessage ([${hash}](../../commit/$hash)) - $author"
-            }
-            else {
-                $other += "- $message ([${hash}](../../commit/$hash)) - $author"
-            }
+          $hash, $message, $author = $_ -split "\|"
+          
+          if ($message -match "^feat(\(.+\))?!?: ") {
+            $cleanMessage = $message -replace '^feat(\(.+\))?: ',''
+            $features += "- $cleanMessage ([${hash}](../../commit/$hash)) - $author"
+          }
+          elseif ($message -match "^fix(\(.+\))?: ") {
+            $cleanMessage = $message -replace '^fix(\(.+\))?: ',''
+            $fixes += "- $cleanMessage ([${hash}](../../commit/$hash)) - $author"
+          }
+          else {
+            $other += "- $message ([${hash}](../../commit/$hash)) - $author"
+          }
         }
 
         $changelogContent = @"
-## What's Changed
-
-### ✨ New Features
-$($features -join "`n")
-
-### 🐛 Bug Fixes
-$($fixes -join "`n")
-
-### 🔄 Other Changes
-$($other -join "`n")
-
-### 👥 Contributors
-$(git log $range --format="- %an" | Sort-Object -Unique)
-"@
+        ## What's Changed
+        
+        ### ✨ New Features
+        $($features -join "`n")
+        
+        ### 🐛 Bug Fixes
+        $($fixes -join "`n")
+        
+        ### 🔄 Other Changes
+        $($other -join "`n")
+        
+        ### 👥 Contributors
+        $(git log $range --format:"- %an" | Sort-Object -Unique)
+        "@
         
         $changelogContent | Out-File -FilePath changelog.md -Encoding UTF8
         
@@ -114,7 +114,5 @@ $(git log $range --format="- %an" | Sort-Object -Unique)
         asset_path: ./nupkg/SmallBin.${{ steps.gitversion.outputs.semVer }}.nupkg
         asset_name: SmallBin.${{ steps.gitversion.outputs.semVer }}.nupkg
         asset_content_type: application/zip
-    - name: Push to NuGet
-      run: dotnet nuget push ./nupkg/SmallBin.${{ steps.gitversion.outputs.semVer }}.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json
     - name: Push to NuGet
       run: dotnet nuget push ./nupkg/SmallBin.${{ steps.gitversion.outputs.semVer }}.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json
