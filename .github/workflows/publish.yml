@@ -43,67 +43,46 @@ jobs:
           $range = "HEAD"
         }
         
-        $features = @()
-        $fixes = @()
-        $other = @()
-        
-        git log $range --pretty=format:"%h|%s|%an" --reverse | ForEach-Object {
+        $commits = git log $range --pretty=format:"%h|%s|%an" --reverse | ForEach-Object {
           $hash, $message, $author = $_ -split "\|"
           
-          if ($message -match "^feat(\(.+\))?!?: ") {
-            $cleanMessage = $message -replace '^feat(\(.+\))?: ',''
-            $features += "- $cleanMessage ([${hash}](../../commit/$hash)) - $author"
-          }
-          elseif ($message -match "^fix(\(.+\))?: ") {
-            $cleanMessage = $message -replace '^fix(\(.+\))?: ',''
-            $fixes += "- $cleanMessage ([${hash}](../../commit/$hash)) - $author"
-          }
-          else {
-            $other += "- $message ([${hash}](../../commit/$hash)) - $author"
-          }
+          $cleanMessage = $message -replace '^(feat|fix|chore|docs|style|refactor|perf|test|ci)(\(.+\))?!?: ',''
+          "- $cleanMessage ([${hash}](../../commit/$hash))"
         }
         
-        $sections = @()
+        $contributors = git log $range --format='%an' | Sort-Object -Unique | ForEach-Object { "- $_" }
         
-        if ($features) {
-            $sections += "### ✨ New Features`n$($features -join "`n")"
-        }
-        if ($fixes) {
-            $sections += "### 🐛 Bug Fixes`n$($fixes -join "`n")"
-        }
-        if ($other) {
-            $sections += "### 🔄 Other Changes`n$($other -join "`n")"
-        }
+        $changelogContent = @"
+        ## What's Changed
         
-        $contributors = git log $range --format='%an' | Sort-Object -Unique
-        if ($contributors) {
-            $sections += "### 👥 Contributors`n$($contributors -join "`n")"
-        }
+        ### Changes
+        $($commits -join "`n")
         
-        $changelogContent = "## What's Changed`n`n$($sections -join "`n`n")"
+        ### Contributors
+        $($contributors -join "`n")
+        "@
         
         $changelogContent | Out-File -FilePath changelog.md -Encoding UTF8
-        
-        $escaped = $changelogContent -replace '%','%25' -replace "`n",'%0A' -replace "`r",'' -replace ':','%3A'
-        "changelog=$escaped" >> $env:GITHUB_OUTPUT
+        echo "changelog<<EOF" >> $env:GITHUB_OUTPUT
+        $changelogContent >> $env:GITHUB_OUTPUT
+        echo "EOF" >> $env:GITHUB_OUTPUT
     - name: Build
       run: |
         dotnet restore
-        dotnet build --configuration Release /p:Version=${{ steps.gitversion.outputs.semVer }} /p:OutputPath=artifacts
-        dotnet pack --configuration Release /p:Version=${{ steps.gitversion.outputs.semVer }} --no-build --output nupkg /p:OutputPath=artifacts
+        dotnet build --configuration Release /p:Version=${{ steps.gitversion.outputs.majorMinorPatch }}
+        dotnet pack --configuration Release /p:Version=${{ steps.gitversion.outputs.majorMinorPatch }} --no-build --output nupkg
     - name: Test
       run: dotnet test --configuration Release --no-build
     - name: Create Release
       id: create_release
       uses: softprops/action-gh-release@v1
       with:
-        tag_name: v${{ steps.gitversion.outputs.semVer }}
-        name: Release v${{ steps.gitversion.outputs.semVer }}
-        body: ${{ steps.changelog.outputs.changelog }}
+        tag_name: v${{ steps.gitversion.outputs.majorMinorPatch }}
+        name: Release v${{ steps.gitversion.outputs.majorMinorPatch }}
+        body_path: changelog.md
         draft: false
         prerelease: false
         files: |
-          ./artifacts/SmallBin.dll
-          ./nupkg/SmallBin.${{ steps.gitversion.outputs.semVer }}.nupkg
+          ./nupkg/SmallBin.${{ steps.gitversion.outputs.majorMinorPatch }}.nupkg
     - name: Push to NuGet
-      run: dotnet nuget push ./nupkg/SmallBin.${{ steps.gitversion.outputs.semVer }}.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json
+      run: dotnet nuget push ./nupkg/SmallBin.${{ steps.gitversion.outputs.majorMinorPatch }}.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json
