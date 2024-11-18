@@ -29,39 +29,36 @@ jobs:
       uses: gittools/actions/gitversion/execute@v0.10.2
     - name: Generate changelog
       id: changelog
+      shell: pwsh
       run: |
         $lastTag = git describe --tags --abbrev=0 2>$null
         if ($lastTag) {
-          $range = "$lastTag..HEAD"
+            $range = "$lastTag..HEAD"
         } else {
-          $range = "HEAD"
+            $range = "HEAD"
         }
         
-        # Group commits by type
-        $commits = git log $range --pretty=format:"%h|%s|%an" --reverse
         $features = @()
         $fixes = @()
         $other = @()
         
-        foreach ($commit in $commits -split "`n") {
-            $parts = $commit -split "\|"
-            $hash = $parts[0]
-            $message = $parts[1]
-            $author = $parts[2]
+        git log $range --pretty=format:"%h|%s|%an" --reverse | ForEach-Object {
+            $hash, $message, $author = $_ -split "\|"
             
             if ($message -match "^feat(\(.+\))?!?: ") {
-                $features += "- $($message -replace '^feat(\(.+\))?: ','') ([`$hash](../../commit/$hash)) - $author"
+                $cleanMessage = $message -replace '^feat(\(.+\))?: ',''
+                $features += "- $cleanMessage ([${hash}](../../commit/$hash)) - $author"
             }
             elseif ($message -match "^fix(\(.+\))?: ") {
-                $fixes += "- $($message -replace '^fix(\(.+\))?: ','') ([`$hash](../../commit/$hash)) - $author"
+                $cleanMessage = $message -replace '^fix(\(.+\))?: ',''
+                $fixes += "- $cleanMessage ([${hash}](../../commit/$hash)) - $author"
             }
             else {
-                $other += "- $($message) ([`$hash](../../commit/$hash)) - $author"
+                $other += "- $message ([${hash}](../../commit/$hash)) - $author"
             }
         }
 
-        # Generate markdown
-        $changelog = @"
+        $changelogContent = @"
 ## What's Changed
 
 ### ✨ New Features
@@ -77,11 +74,10 @@ $($other -join "`n")
 $(git log $range --format="- %an" | Sort-Object -Unique)
 "@
         
-        $changelog | Out-File -FilePath changelog.md -Encoding UTF8
+        $changelogContent | Out-File -FilePath changelog.md -Encoding UTF8
         
-        # Escape for GitHub Actions output
-        $escaped = $changelog -replace '%', '%25' -replace "`n", '%0A' -replace "`r", '' -replace ':', '%3A'
-        echo "changelog=$escaped" >> $env:GITHUB_OUTPUT
+        $escaped = $changelogContent -replace '%','%25' -replace "`n",'%0A' -replace "`r",'' -replace ':','%3A'
+        "changelog=$escaped" >> $env:GITHUB_OUTPUT
     - name: Build
       run: |
         dotnet restore
@@ -118,5 +114,7 @@ $(git log $range --format="- %an" | Sort-Object -Unique)
         asset_path: ./nupkg/SmallBin.${{ steps.gitversion.outputs.semVer }}.nupkg
         asset_name: SmallBin.${{ steps.gitversion.outputs.semVer }}.nupkg
         asset_content_type: application/zip
+    - name: Push to NuGet
+      run: dotnet nuget push ./nupkg/SmallBin.${{ steps.gitversion.outputs.semVer }}.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json
     - name: Push to NuGet
       run: dotnet nuget push ./nupkg/SmallBin.${{ steps.gitversion.outputs.semVer }}.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json
