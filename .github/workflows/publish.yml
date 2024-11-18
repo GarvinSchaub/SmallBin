@@ -27,7 +27,7 @@ jobs:
     - name: Determine Version
       id: gitversion
       uses: gittools/actions/gitversion/execute@v0.10.2
-    - name: Generate changelog
+- name: Generate changelog
       id: changelog
       shell: pwsh
       run: |
@@ -60,21 +60,22 @@ jobs:
         
         $contributors = git log $range --format='%an' | Sort-Object -Unique | ForEach-Object { "- $_" }
         
-        $changelogContent = @"
-        ## What's Changed
+        $sections = @()
         
-        ### ✨ New Features
-        $($features -join "`n")
+        if ($features) {
+            $sections += "### ✨ New Features`n$($features -join "`n")"
+        }
+        if ($fixes) {
+            $sections += "### 🐛 Bug Fixes`n$($fixes -join "`n")"
+        }
+        if ($other) {
+            $sections += "### 🔄 Other Changes`n$($other -join "`n")"
+        }
+        if ($contributors) {
+            $sections += "### 👥 Contributors`n$($contributors -join "`n")"
+        }
         
-        ### 🐛 Bug Fixes
-        $($fixes -join "`n")
-        
-        ### 🔄 Other Changes
-        $($other -join "`n")
-        
-        ### 👥 Contributors
-        $($contributors -join "`n")
-        "@
+        $changelogContent = "## What's Changed`n`n$($sections -join "`n`n")"
         
         $changelogContent | Out-File -FilePath changelog.md -Encoding UTF8
         
@@ -83,8 +84,8 @@ jobs:
     - name: Build
       run: |
         dotnet restore
-        dotnet build --configuration Release /p:Version=${{ steps.gitversion.outputs.semVer }}
-        dotnet pack --configuration Release /p:Version=${{ steps.gitversion.outputs.semVer }} --no-build --output nupkg
+        dotnet build --configuration Release /p:Version=${{ steps.gitversion.outputs.semVer }} /p:OutputPath=artifacts
+        dotnet pack --configuration Release /p:Version=${{ steps.gitversion.outputs.semVer }} --no-build --output nupkg /p:OutputPath=artifacts
     - name: Test
       run: dotnet test --configuration Release --no-build
     - name: Create Release
@@ -104,7 +105,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./bin/Release/net7.0/SmallBin.dll
+        asset_path: ./artifacts/SmallBin.dll
         asset_name: SmallBin.dll
         asset_content_type: application/octet-stream
     - name: Upload NuGet Package
