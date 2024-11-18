@@ -2,8 +2,6 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SmallBin", "SmallBin\SmallBin.csproj", "{CC3A857D-4B86-457D-9E16-D456164E77D3}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SmallBin.UI", "SmallBin.UI\SmallBin.UI.csproj", "{720C2C6E-5D83-4AE4-9D2F-EB489B7E885C}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -14,9 +12,5 @@ Global
 		{CC3A857D-4B86-457D-9E16-D456164E77D3}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{CC3A857D-4B86-457D-9E16-D456164E77D3}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{CC3A857D-4B86-457D-9E16-D456164E77D3}.Release|Any CPU.Build.0 = Release|Any CPU
-		{720C2C6E-5D83-4AE4-9D2F-EB489B7E885C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{720C2C6E-5D83-4AE4-9D2F-EB489B7E885C}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{720C2C6E-5D83-4AE4-9D2F-EB489B7E885C}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{720C2C6E-5D83-4AE4-9D2F-EB489B7E885C}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
