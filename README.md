@@ -1,8 +1,11 @@
-﻿# SmallBin
+# SmallBin
+
+[![NuGet](https://img.shields.io/nuget/v/SmallBin.svg)](https://www.nuget.org/packages/SmallBin/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 SmallBin is a lightweight, secure file storage library for .NET that enables storing multiple files in a single encrypted container with metadata support and comprehensive logging capabilities.
 
-## Features
+## 🔑 Key Features
 
 - Single-file encrypted database
 - Password-based encryption (AES-256)
@@ -13,13 +16,13 @@ SmallBin is a lightweight, secure file storage library for .NET that enables sto
 - Flexible logging system with console and file output
 - Extensible logging interface
 
-## Installation
+## 📦 Installation
 
-```bash
+```shell
 dotnet add package SmallBin
 ```
 
-## Usage
+## 🚀 Quick Start
 
 ### Creating a New Database
 
@@ -122,7 +125,32 @@ var db = SecureFileDatabase.Create("mydata.sdb", "password123")
     .Build();
 ```
 
-## WPF Application Example
+### Configuring Logging
+
+```csharp
+// Console logging
+var consoleLogger = new ConsoleLogger();
+
+// File logging
+var fileLogger = new FileLogger("app.log");
+
+// Custom logging by implementing ILogger
+public class CustomLogger : ILogger
+{
+    public void Log(string message)
+    {
+        // Custom logging implementation
+    }
+}
+
+// Using multiple loggers
+var db = SecureFileDatabase.Create("mydata.sdb", "password123")
+    .WithLogger(consoleLogger)
+    .WithLogger(fileLogger)
+    .Build();
+```
+
+## 🖥️ WPF Application Example
 
 ```csharp
 public partial class MainWindow : Window
@@ -153,7 +181,7 @@ public partial class MainWindow : Window
 }
 ```
 
-## Security Considerations
+## 🔒 Security Considerations
 
 - Passwords should be strong and securely stored
 - Database files contain encrypted content
@@ -161,11 +189,11 @@ public partial class MainWindow : Window
 - Uses PBKDF2 for key derivation
 - All operations are logged for security auditing
 
-## License
+## 📄 License
 
-MIT License
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Contributing
+## 👥 Contributing
 
 Contributions welcome! NEVER submit pull requests directly to the main branch.
 
@@ -201,3 +229,7 @@ ci: add new deploy stage
 - Keep first line under 70 characters
 - Add scope for clarity: `feat(auth):`, `fix(db):`
 - Include ticket number if needed: `feat: add login (#123)`
+
+## ⭐ Show Your Support
+
+If you find this project useful, please consider giving it a star on GitHub!
