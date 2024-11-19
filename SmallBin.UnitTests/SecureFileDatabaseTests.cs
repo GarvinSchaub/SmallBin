@@ -305,7 +305,7 @@ public class SecureFileDatabaseTests : IDisposable
         db.SaveFile(CreateTestFile("test2.txt", "content"));
 
         // Act
-        var results = db.Search(null);
+        var results = db.Search(null!);
 
         // Assert
         Assert.Equal(2, results.Count());
