@@ -6,6 +6,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Xml.Schema;
 
 namespace SmallBin
 {
@@ -56,9 +57,10 @@ namespace SmallBin
         /// </summary>
         public SecureFileDatabase(string dbPath, string password, bool useCompression = true)
         {
-            if (string.IsNullOrEmpty(dbPath))
+            if (string.IsNullOrEmpty(dbPath)  || string.IsNullOrWhiteSpace(dbPath))
                 throw new ArgumentNullException(nameof(dbPath));
-            if (string.IsNullOrEmpty(password))
+
+            if (string.IsNullOrEmpty(password) || string.IsNullOrWhiteSpace(password))
                 throw new ArgumentNullException(nameof(password));
 
             _dbPath = dbPath;
@@ -291,6 +293,8 @@ namespace SmallBin
 
             string tempPath = _dbPath + ".tmp";
             string backupPath = _dbPath + ".bak";
+            
+            //TODO: Looks like the backup stuff doesn't work properly
 
             try
             {
