@@ -1,6 +1,7 @@
 ﻿# SmallBin
 
-SmallBin is a lightweight, secure file storage library for .NET that enables storing multiple files in a single encrypted container with metadata support.
+SmallBin is a lightweight, secure file storage library for .NET that enables storing multiple files in a single
+encrypted container with metadata support.
 
 ## Features
 
