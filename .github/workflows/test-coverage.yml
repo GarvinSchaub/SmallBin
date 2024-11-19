@@ -62,20 +62,6 @@ jobs:
           name: coverage-report
           path: coveragereport
 
-      - name: Coverage Badge
-        uses: simon-k/dotnet-code-coverage-badge@v1.0.0
-        id: create_coverage_badge
-        with:
-          label: Coverage
-          color: brightgreen
-          path: '**/coverage.cobertura.xml'
-
-      - name: Upload coverage badge
-        uses: actions/upload-artifact@v3
-        with:
-          name: code-coverage-badge
-          path: '**/coverage-badge.svg'
-
       - name: Publish Test Results
         uses: EnricoMi/publish-unit-test-result-action@v2
         if: always()
