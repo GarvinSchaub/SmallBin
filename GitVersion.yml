@@ -7,16 +7,15 @@ minor-version-bump-message: '\+semver:\s?(feature|minor)'
 patch-version-bump-message: '\+semver:\s?(fix|patch)'
 no-bump-message: '\+semver:\s?(none|skip)'
 commit-message-incrementing: Enabled
-prevent-increment:
-  of-merged-branch: false
-  when-branch-merged: false
+
 branches:
   master:
     regex: ^master$
     mode: ContinuousDelivery
     increment: Patch
     track-merge-target: true
-    is-release-branch: true
+    is-main-branch: true
+    
   develop:
     regex: ^dev(elop)?$
     mode: ContinuousDeployment
@@ -24,24 +23,22 @@ branches:
     track-merge-target: true
     tracks-release-branches: true
     source-branches: ['master']
+    
   feature:
     regex: ^features?[/-]
     mode: ContinuousDeployment
     increment: Inherit
     source-branches: ['develop']
+    
   hotfix:
     regex: ^hotfix(es)?[/-]
     increment: Patch
-    source-branches: ['master']
+    source-branches: ['develop']  # Changed to develop since hotfixes go through release
     track-merge-target: true
-    tracks-release-branches: true
-    is-release-branch: true
+    
   release:
     regex: ^releases?[/-]
     mode: ContinuousDeployment
     increment: None
     source-branches: ['develop']
-    tracks-release-branches: false
     is-release-branch: true
-ignore:
-  sha: []
