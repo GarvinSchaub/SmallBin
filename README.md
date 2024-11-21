@@ -24,8 +24,14 @@ dotnet add package SmallBin
 ```csharp
 using SmallBin;
 
-// Create or open an encrypted database
-using var db = new SecureFileDatabase("mydata.sdb", "password123");
+// Create or open an encrypted database using the builder pattern
+using var db = SecureFileDatabase.Create("mydata.sdb", "password123")
+    .WithoutCompression()  // Optional: disable compression (enabled by default)
+    .WithAutoSave()       // Optional: enable auto-save (disabled by default)
+    .Build();
+
+// The builder pattern makes it clear which options are being configured
+// and allows for future extensibility without breaking changes
 ```
 
 ### Adding Files
@@ -93,7 +99,9 @@ public partial class MainWindow : Window
 
     private void OpenDatabase()
     {
-        _db = new SecureFileDatabase("data.sdb", "password123");
+        _db = SecureFileDatabase.Create("data.sdb", "password123")
+            .WithAutoSave() // Enable auto-save for WPF applications
+            .Build();
     }
 
     private void AddFile_Click(object sender, RoutedEventArgs e)
