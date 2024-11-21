@@ -34,38 +34,83 @@ public class SecureFileDatabaseTests : IDisposable
             Directory.Delete(_testFilesDir, true);
     }
 
-    #region Constructor Tests
+    #region Builder Tests
 
     [Fact]
-    public void Constructor_WithValidParameters_ShouldCreateNewDatabase()
+    public void Create_WithValidParameters_ShouldReturnDatabaseBuilder()
     {
-        using var db = new SecureFileDatabase(_testDbPath, _testPassword);
+        var builder = SecureFileDatabase.Create(_testDbPath, _testPassword);
+        Assert.NotNull(builder);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" ")]
+    public void Create_WithInvalidDbPath_ShouldThrowArgumentNullException(string dbPath)
+    {
+        Assert.Throws<ArgumentNullException>(() => SecureFileDatabase.Create(dbPath, _testPassword));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" ")]
+    public void Create_WithInvalidPassword_ShouldThrowArgumentNullException(string password)
+    {
+        Assert.Throws<ArgumentNullException>(() => SecureFileDatabase.Create(_testDbPath, password));
+    }
+
+    [Fact]
+    public void Build_WithDefaultOptions_ShouldCreateDatabase()
+    {
+        using var db = SecureFileDatabase.Create(_testDbPath, _testPassword).Build();
         Assert.True(File.Exists(_testDbPath));
     }
 
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData(" ")]
-    public void Constructor_WithInvalidDbPath_ShouldThrowArgumentNullException(string dbPath)
+    [Fact]
+    public void Build_WithCompressionDisabled_ShouldNotCompressFiles()
     {
-        Assert.Throws<ArgumentNullException>(() => new SecureFileDatabase(dbPath, _testPassword));
+        var testFilePath = CreateTestFile("test.txt", new string('a', 1000));
+        using var db = SecureFileDatabase.Create(_testDbPath, _testPassword)
+            .WithoutCompression()
+            .Build();
+
+        db.SaveFile(testFilePath);
+        db.Save();
+
+        var dbContent = GetDatabaseContent();
+        var entry = dbContent.Files.First().Value;
+        Assert.False(entry.IsCompressed);
     }
 
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData(" ")]
-    public void Constructor_WithInvalidPassword_ShouldThrowArgumentNullException(string password)
+    [Fact]
+    public void Build_WithAutoSaveEnabled_ShouldSaveAutomatically()
     {
-        Assert.Throws<ArgumentNullException>(() => new SecureFileDatabase(_testDbPath, password));
+        var testFilePath = CreateTestFile("test.txt", "Test content");
+        using (var db = SecureFileDatabase.Create(_testDbPath, _testPassword)
+            .WithAutoSave()
+            .Build())
+        {
+            db.SaveFile(testFilePath);
+            // No explicit Save() call
+        }
+
+        // Verify file was saved
+        Assert.True(File.Exists(_testDbPath));
+        var dbContent = GetDatabaseContent();
+        Assert.Single(dbContent.Files);
     }
+
+    #endregion
+
+    #region Constructor Tests
 
     [Fact]
     public void Constructor_WithNonexistentDirectory_ShouldCreateDirectory()
     {
         var deepPath = Path.Combine(_testFilesDir, "deep", "deeper", "database.sdb");
-        using var db = new SecureFileDatabase(deepPath, _testPassword);
+        using var db = SecureFileDatabase.Create(deepPath, _testPassword).Build();
         Assert.True(Directory.Exists(Path.GetDirectoryName(deepPath)));
     }
 
@@ -78,7 +123,7 @@ public class SecureFileDatabaseTests : IDisposable
     {
         // Arrange
         var testFilePath = CreateTestFile("test.txt", "Test content");
-        using var db = new SecureFileDatabase(_testDbPath, _testPassword);
+        using var db = SecureFileDatabase.Create(_testDbPath, _testPassword).Build();
 
         // Act
         db.SaveFile(testFilePath);
@@ -96,7 +141,7 @@ public class SecureFileDatabaseTests : IDisposable
         // Arrange
         var testFilePath = CreateTestFile("test.txt", "Test content");
         var tags = new List<string> { "tag1", "tag2" };
-        using var db = new SecureFileDatabase(_testDbPath, _testPassword);
+        using var db = SecureFileDatabase.Create(_testDbPath, _testPassword).Build();
 
         // Act
         db.SaveFile(testFilePath, tags);
@@ -113,7 +158,7 @@ public class SecureFileDatabaseTests : IDisposable
         // Arrange
         var testFilePath = CreateTestFile("test.txt", "Test content");
         const string contentType = "text/plain";
-        using var db = new SecureFileDatabase(_testDbPath, _testPassword);
+        using var db = SecureFileDatabase.Create(_testDbPath, _testPassword).Build();
 
         // Act
         db.SaveFile(testFilePath, contentType: contentType);
@@ -127,7 +172,7 @@ public class SecureFileDatabaseTests : IDisposable
     [Fact]
     public void SaveFile_WithNonexistentFile_ShouldThrowFileNotFoundException()
     {
-        using var db = new SecureFileDatabase(_testDbPath, _testPassword);
+        using var db = SecureFileDatabase.Create(_testDbPath, _testPassword).Build();
         Assert.Throws<FileNotFoundException>(() => db.SaveFile("nonexistent.txt"));
     }
 
@@ -136,7 +181,7 @@ public class SecureFileDatabaseTests : IDisposable
     {
         // Arrange
         var testFilePath = CreateTestFile("test.txt", new string('a', 1000));
-        using var db = new SecureFileDatabase(_testDbPath, _testPassword, useCompression: true);
+        using var db = SecureFileDatabase.Create(_testDbPath, _testPassword).Build();
 
         // Act
         db.SaveFile(testFilePath);
@@ -159,14 +204,14 @@ public class SecureFileDatabaseTests : IDisposable
         var content = "Test content";
         var testFilePath = CreateTestFile("test.txt", content);
         string fileId;
-        using (var db = new SecureFileDatabase(_testDbPath, _testPassword))
+        using (var db = SecureFileDatabase.Create(_testDbPath, _testPassword).Build())
         {
             db.SaveFile(testFilePath);
             fileId = db.Search(new SearchCriteria { FileName = "test.txt" }).First().Id;
         }
 
         // Act
-        using var db2 = new SecureFileDatabase(_testDbPath, _testPassword);
+        using var db2 = SecureFileDatabase.Create(_testDbPath, _testPassword).Build();
         var retrievedContent = db2.GetFile(fileId);
 
         // Assert
@@ -176,7 +221,7 @@ public class SecureFileDatabaseTests : IDisposable
     [Fact]
     public void GetFile_WithInvalidId_ShouldThrowKeyNotFoundException()
     {
-        using var db = new SecureFileDatabase(_testDbPath, _testPassword);
+        using var db = SecureFileDatabase.Create(_testDbPath, _testPassword).Build();
         Assert.Throws<KeyNotFoundException>(() => db.GetFile("invalid-id"));
     }
 
@@ -187,14 +232,14 @@ public class SecureFileDatabaseTests : IDisposable
         var content = new string('a', 1000);
         var testFilePath = CreateTestFile("test.txt", content);
         string fileId;
-        using (var db = new SecureFileDatabase(_testDbPath, _testPassword, useCompression: true))
+        using (var db = SecureFileDatabase.Create(_testDbPath, _testPassword).Build())
         {
             db.SaveFile(testFilePath);
             fileId = db.Search(new SearchCriteria { FileName = "test.txt" }).First().Id;
         }
 
         // Act
-        using var db2 = new SecureFileDatabase(_testDbPath, _testPassword);
+        using var db2 = SecureFileDatabase.Create(_testDbPath, _testPassword).Build();
         var retrievedContent = db2.GetFile(fileId);
 
         // Assert
@@ -211,14 +256,14 @@ public class SecureFileDatabaseTests : IDisposable
         // Arrange
         var testFilePath = CreateTestFile("test.txt", "Test content");
         string fileId;
-        using (var db = new SecureFileDatabase(_testDbPath, _testPassword))
+        using (var db = SecureFileDatabase.Create(_testDbPath, _testPassword).Build())
         {
             db.SaveFile(testFilePath);
             fileId = db.Search(new SearchCriteria { FileName = "test.txt" }).First().Id;
         }
 
         // Act
-        using (var db = new SecureFileDatabase(_testDbPath, _testPassword))
+        using (var db = SecureFileDatabase.Create(_testDbPath, _testPassword).Build())
         {
             db.DeleteFile(fileId);
         }
@@ -231,7 +276,7 @@ public class SecureFileDatabaseTests : IDisposable
     [Fact]
     public void DeleteFile_WithInvalidId_ShouldThrowKeyNotFoundException()
     {
-        using var db = new SecureFileDatabase(_testDbPath, _testPassword);
+        using var db = SecureFileDatabase.Create(_testDbPath, _testPassword).Build();
         Assert.Throws<KeyNotFoundException>(() => db.DeleteFile("invalid-id"));
     }
 
@@ -245,14 +290,14 @@ public class SecureFileDatabaseTests : IDisposable
         // Arrange
         var testFilePath = CreateTestFile("test.txt", "Test content");
         string fileId;
-        using (var db = new SecureFileDatabase(_testDbPath, _testPassword))
+        using (var db = SecureFileDatabase.Create(_testDbPath, _testPassword).Build())
         {
             db.SaveFile(testFilePath);
             fileId = db.Search(new SearchCriteria { FileName = "test.txt" }).First().Id;
         }
 
         // Act
-        using (var db = new SecureFileDatabase(_testDbPath, _testPassword))
+        using (var db = SecureFileDatabase.Create(_testDbPath, _testPassword).Build())
         {
             db.UpdateMetadata(fileId, entry =>
             {
@@ -271,7 +316,7 @@ public class SecureFileDatabaseTests : IDisposable
     [Fact]
     public void UpdateMetadata_WithInvalidId_ShouldThrowKeyNotFoundException()
     {
-        using var db = new SecureFileDatabase(_testDbPath, _testPassword);
+        using var db = SecureFileDatabase.Create(_testDbPath, _testPassword).Build();
         Assert.Throws<KeyNotFoundException>(() => 
             db.UpdateMetadata("invalid-id", _ => { }));
     }
@@ -284,7 +329,7 @@ public class SecureFileDatabaseTests : IDisposable
     public void Search_WithFileName_ShouldReturnMatchingEntries()
     {
         // Arrange
-        using var db = new SecureFileDatabase(_testDbPath, _testPassword);
+        using var db = SecureFileDatabase.Create(_testDbPath, _testPassword).Build();
         db.SaveFile(CreateTestFile("test1.txt", "content"));
         db.SaveFile(CreateTestFile("test2.txt", "content"));
         db.SaveFile(CreateTestFile("other.txt", "content"));
@@ -300,7 +345,7 @@ public class SecureFileDatabaseTests : IDisposable
     public void Search_WithNullCriteria_ShouldReturnAllEntries()
     {
         // Arrange
-        using var db = new SecureFileDatabase(_testDbPath, _testPassword);
+        using var db = SecureFileDatabase.Create(_testDbPath, _testPassword).Build();
         db.SaveFile(CreateTestFile("test1.txt", "content"));
         db.SaveFile(CreateTestFile("test2.txt", "content"));
 
@@ -320,13 +365,13 @@ public class SecureFileDatabaseTests : IDisposable
     {
         // Arrange
         var testFilePath = CreateTestFile("test.txt", "Test content");
-        using (var db = new SecureFileDatabase(_testDbPath, _testPassword))
+        using (var db = SecureFileDatabase.Create(_testDbPath, _testPassword).Build())
         {
             db.SaveFile(testFilePath);
         }
 
         // Act & Assert
-        using (var db = new SecureFileDatabase(_testDbPath, _testPassword))
+        using (var db = SecureFileDatabase.Create(_testDbPath, _testPassword).Build())
         {
             var results = db.Search(new SearchCriteria { FileName = "test.txt" });
             Assert.Single(results);
@@ -337,7 +382,7 @@ public class SecureFileDatabaseTests : IDisposable
     public void Save_WithNoModifications_ShouldNotCreateBackup()
     {
         // Arrange
-        using (var db = new SecureFileDatabase(_testDbPath, _testPassword))
+        using (var db = SecureFileDatabase.Create(_testDbPath, _testPassword).Build())
         {
             // Do nothing - no modifications
         }
@@ -357,7 +402,7 @@ public class SecureFileDatabaseTests : IDisposable
         var testFilePath = CreateTestFile("test.txt", "Test content");
         
         // Act
-        using (var db = new SecureFileDatabase(_testDbPath, _testPassword))
+        using (var db = SecureFileDatabase.Create(_testDbPath, _testPassword).Build())
         {
             db.SaveFile(testFilePath);
             // Dispose will be called automatically
@@ -382,7 +427,7 @@ public class SecureFileDatabaseTests : IDisposable
 
     private DatabaseContent GetDatabaseContent()
     {
-        using var db = new SecureFileDatabase(_testDbPath, _testPassword);
+        using var db = SecureFileDatabase.Create(_testDbPath, _testPassword).Build();
         return new DatabaseContent
         {
             Files = db.Search(null).ToDictionary(f => f.Id)
@@ -391,7 +436,7 @@ public class SecureFileDatabaseTests : IDisposable
 
     #endregion
     
-        #region Database Corruption Tests
+    #region Database Corruption Tests
 
     [Fact]
     public void LoadDatabase_WithCorruptFile_ShouldThrowInvalidOperationException()
@@ -401,7 +446,7 @@ public class SecureFileDatabaseTests : IDisposable
 
         // Act & Assert
         Assert.Throws<InvalidOperationException>(() => 
-            new SecureFileDatabase(_testDbPath, _testPassword));
+            SecureFileDatabase.Create(_testDbPath, _testPassword).Build());
     }
 
     [Fact]
@@ -412,59 +457,12 @@ public class SecureFileDatabaseTests : IDisposable
 
         // Act & Assert
         Assert.Throws<InvalidOperationException>(() => 
-            new SecureFileDatabase(_testDbPath, _testPassword));
+            SecureFileDatabase.Create(_testDbPath, _testPassword).Build());
     }
 
     #endregion
 
     #region Save Error Handling Tests
-
-    // [Fact]
-    // public void Save_WhenSaveOperationFails_ShouldRestoreFromBackup()
-    // {
-    //     // Arrange
-    //     var testFilePath = CreateTestFile("test.txt", "Test content");
-    //     byte[] originalContent;
-    //
-    //     // Setup initial database state
-    //     using (var db = new SecureFileDatabase(_testDbPath, _testPassword))
-    //     {
-    //         db.SaveFile(testFilePath);
-    //         db.Save();
-    //         originalContent = File.ReadAllBytes(_testDbPath);
-    //     }
-    //
-    //     // Create a new instance for testing save failure
-    //     using (var db = new SecureFileDatabase(_testDbPath, _testPassword))
-    //     {
-    //         // Add a new file to make the database dirty
-    //         db.SaveFile(CreateTestFile("another.txt", "content"));
-    //
-    //         // Force a save operation that will create a backup
-    //         db.Save();
-    //
-    //         // Verify backup was created
-    //         Assert.True(File.Exists(_testDbPath + ".bak"));
-    //
-    //         // Delete original database file to simulate partial save failure
-    //         File.Delete(_testDbPath);
-    //
-    //         // Verify backup is restored
-    //         Assert.True(File.Exists(_testDbPath + ".bak"));
-    //         
-    //         // The next save operation should restore from backup
-    //         db.Save();
-    //
-    //         // Assert
-    //         Assert.True(File.Exists(_testDbPath), "Database file should exist");
-    //         Assert.False(File.Exists(_testDbPath + ".tmp"), "Temporary file should be cleaned up");
-    //         Assert.False(File.Exists(_testDbPath + ".bak"), "Backup file should be cleaned up");
-    //         
-    //         // Verify content length matches original
-    //         var restoredContent = File.ReadAllBytes(_testDbPath);
-    //         Assert.Equal(originalContent.Length, restoredContent.Length);
-    //     }
-    // }
 
     [Fact]
     public void Save_WithSuccessfulOperation_ShouldCleanupTemporaryFiles()
@@ -472,7 +470,7 @@ public class SecureFileDatabaseTests : IDisposable
         // Arrange
         var testFilePath = CreateTestFile("test.txt", "Test content");
 
-        using var db = new SecureFileDatabase(_testDbPath, _testPassword);
+        using var db = SecureFileDatabase.Create(_testDbPath, _testPassword).Build();
         db.SaveFile(testFilePath);
 
         // Act

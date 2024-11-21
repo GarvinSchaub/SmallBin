@@ -17,6 +17,15 @@ namespace SmallBin
     ///     retrieval, and management of files with support for metadata,
     ///     encryption, and optional compression.
     /// </summary>
+    /// <example>
+    /// To create a new database:
+    /// <code>
+    /// var db = SecureFileDatabase.Create("path/to/db", "password")
+    ///     .WithoutCompression()  // Optional: disable compression
+    ///     .WithAutoSave()        // Optional: enable auto-save
+    ///     .Build();
+    /// </code>
+    /// </example>
     public class SecureFileDatabase : IDisposable
     {
         /// <summary>
@@ -55,11 +64,21 @@ namespace SmallBin
         private bool _useAutoSave;
 
         /// <summary>
-        ///     The SecureFileDatabase class provides secure storage,
-        ///     retrieval, and management of files with support for metadata,
-        ///     encryption, and optional compression.
+        ///     Creates a new DatabaseBuilder instance for configuring and creating a SecureFileDatabase.
         /// </summary>
-        public SecureFileDatabase(string dbPath, string password, bool useCompression = true, bool useAutoSave = false)
+        /// <param name="dbPath">The file path where the database will be stored.</param>
+        /// <param name="password">The password used for encrypting the database.</param>
+        /// <returns>A new DatabaseBuilder instance for fluent configuration.</returns>
+        public static DatabaseBuilder Create(string dbPath, string password)
+        {
+            return new DatabaseBuilder(dbPath, password);
+        }
+
+        /// <summary>
+        ///     Internal constructor used by DatabaseBuilder to create a new instance of SecureFileDatabase.
+        ///     To create a new database, use the static Create method instead.
+        /// </summary>
+        internal SecureFileDatabase(string dbPath, string password, bool useCompression = true, bool useAutoSave = false)
         {
             if (string.IsNullOrEmpty(dbPath) || string.IsNullOrWhiteSpace(dbPath))
                 throw new ArgumentNullException(nameof(dbPath));
@@ -153,12 +172,10 @@ namespace SmallBin
             };
 
             _database.Files[entry.Id] = entry;
+            _isDirty = true;
 
-            // Add the auto save functionality
             if (_useAutoSave)
                 Save();
-            else
-                _isDirty = true;
         }
 
         /// <summary>
