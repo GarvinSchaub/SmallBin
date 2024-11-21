@@ -172,12 +172,10 @@ namespace SmallBin
             };
 
             _database.Files[entry.Id] = entry;
+            _isDirty = true;
 
-            // Add the auto save functionality
             if (_useAutoSave)
                 Save();
-            else
-                _isDirty = true;
         }
 
         /// <summary>
