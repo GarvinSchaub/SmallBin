@@ -308,8 +308,7 @@ namespace SmallBin
         /// <remarks>
         ///     This method serializes the in-memory database content to a temporary file,
         ///     encrypts it, and then replaces the original database file with the new one.
-        ///     In case of failure, the method ensures that any temporary files are cleaned up,
-        ///     and the database remains in a consistent state.
+        ///     A backup of the previous version is maintained until the next save operation.
         /// </remarks>
         /// <exception cref="InvalidOperationException">Thrown if the database content is not written correctly.</exception>
         /// <exception cref="IOException">Thrown if there are errors during file operations.</exception>
@@ -319,13 +318,11 @@ namespace SmallBin
 
             var tempPath = $"{_dbPath}.tmp";
             var backupPath = $"{_dbPath}.bak";
-
-            //TODO: Looks like the backup stuff doesn't work properly
+            var oldBackupPath = $"{_dbPath}.bak.old";
 
             try
             {
-                if (File.Exists(_dbPath)) File.Copy(_dbPath, backupPath, true);
-
+                // Create new content in temporary file
                 var jsonOptions = new JsonSerializerOptions {WriteIndented = true};
                 var json = JsonSerializer.Serialize(_database, jsonOptions);
                 var jsonBytes = Encoding.UTF8.GetBytes(json);
@@ -348,21 +345,43 @@ namespace SmallBin
                 if (new FileInfo(tempPath).Length <= 16)
                     throw new InvalidOperationException("Failed to write database content");
 
-                if (File.Exists(_dbPath)) File.Delete(_dbPath);
+                // Backup existing file if it exists
+                if (File.Exists(_dbPath))
+                {
+                    // Remove old backup if it exists
+                    if (File.Exists(backupPath))
+                    {
+                        if (File.Exists(oldBackupPath))
+                            File.Delete(oldBackupPath);
+                        File.Move(backupPath, oldBackupPath);
+                    }
+                    File.Copy(_dbPath, backupPath, true);
+                }
 
-                File.Move(tempPath, _dbPath);
-
-                if (File.Exists(backupPath)) File.Delete(backupPath);
+                // Replace current file with new content
+                if (File.Exists(_dbPath))
+                    File.Delete(_dbPath);
+                File.Copy(tempPath, _dbPath);
 
                 _isDirty = false;
             }
-            catch
+            catch (Exception)
             {
-                if (File.Exists(backupPath) && !File.Exists(_dbPath)) File.Move(backupPath, _dbPath);
-
-                if (File.Exists(tempPath)) File.Delete(tempPath);
+                // On error, try to restore from backup
+                if (File.Exists(backupPath) && !File.Exists(_dbPath))
+                    File.Copy(backupPath, _dbPath);
 
                 throw;
+            }
+            finally
+            {
+                // Clean up temporary file
+                if (File.Exists(tempPath))
+                    File.Delete(tempPath);
+                
+                // Clean up old backup
+                if (File.Exists(oldBackupPath))
+                    File.Delete(oldBackupPath);
             }
         }
 
