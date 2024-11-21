@@ -30,6 +30,8 @@ public class SecureFileDatabaseTests : IDisposable
             File.Delete(_testDbPath + ".tmp");
         if (File.Exists(_testDbPath + ".bak"))
             File.Delete(_testDbPath + ".bak");
+        if (File.Exists(_testDbPath + ".bak.old"))
+            File.Delete(_testDbPath + ".bak.old");
         if (Directory.Exists(_testFilesDir))
             Directory.Delete(_testFilesDir, true);
     }
@@ -391,6 +393,30 @@ public class SecureFileDatabaseTests : IDisposable
         Assert.False(File.Exists(_testDbPath + ".bak"));
     }
 
+    [Fact]
+    public void Save_WithModifications_ShouldCreateBackup()
+    {
+        // Arrange
+        var testFilePath = CreateTestFile("test.txt", "Initial content");
+        
+        // First save to create initial database
+        using (var db = SecureFileDatabase.Create(_testDbPath, _testPassword).Build())
+        {
+            db.SaveFile(testFilePath);
+            db.Save();
+        }
+
+        // Second save to test backup creation
+        using (var db = SecureFileDatabase.Create(_testDbPath, _testPassword).Build())
+        {
+            db.SaveFile(CreateTestFile("test2.txt", "More content"));
+            db.Save();
+        }
+
+        // Assert
+        Assert.True(File.Exists(_testDbPath + ".bak"), "Backup file should exist after save with modifications");
+    }
+
     #endregion
 
     #region Dispose Tests
@@ -416,26 +442,6 @@ public class SecureFileDatabaseTests : IDisposable
 
     #endregion
 
-    #region Helper Methods
-
-    private string CreateTestFile(string fileName, string content)
-    {
-        var filePath = Path.Combine(_testFilesDir, fileName);
-        File.WriteAllText(filePath, content);
-        return filePath;
-    }
-
-    private DatabaseContent GetDatabaseContent()
-    {
-        using var db = SecureFileDatabase.Create(_testDbPath, _testPassword).Build();
-        return new DatabaseContent
-        {
-            Files = db.Search(null).ToDictionary(f => f.Id)
-        };
-    }
-
-    #endregion
-    
     #region Database Corruption Tests
 
     [Fact]
@@ -479,7 +485,26 @@ public class SecureFileDatabaseTests : IDisposable
         // Assert
         Assert.True(File.Exists(_testDbPath), "Database file should exist");
         Assert.False(File.Exists(_testDbPath + ".tmp"), "Temporary file should not exist");
-        Assert.False(File.Exists(_testDbPath + ".bak"), "Backup file should not exist");
+    }
+
+    #endregion
+
+    #region Helper Methods
+
+    private string CreateTestFile(string fileName, string content)
+    {
+        var filePath = Path.Combine(_testFilesDir, fileName);
+        File.WriteAllText(filePath, content);
+        return filePath;
+    }
+
+    private DatabaseContent GetDatabaseContent()
+    {
+        using var db = SecureFileDatabase.Create(_testDbPath, _testPassword).Build();
+        return new DatabaseContent
+        {
+            Files = db.Search(null).ToDictionary(f => f.Id)
+        };
     }
 
     #endregion
