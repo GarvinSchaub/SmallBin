@@ -13,6 +13,16 @@ namespace SmallBin.Core
     ///     retrieval, and management of files with support for metadata,
     ///     encryption, and optional compression.
     /// </summary>
+    /// <remarks>
+    ///     This class implements the IDisposable pattern and ensures proper cleanup
+    ///     of resources. It uses a builder pattern for configuration and supports
+    ///     features such as:
+    ///     - AES-256 encryption for file content
+    ///     - Optional GZip compression
+    ///     - File metadata and tagging
+    ///     - Automatic saving of changes
+    ///     - Comprehensive logging
+    /// </remarks>
     public class SecureFileDatabase : IDisposable
     {
         private readonly DatabaseContent _database;
@@ -25,8 +35,17 @@ namespace SmallBin.Core
         private bool _isDisposed;
 
         /// <summary>
-        ///     Creates a new DatabaseBuilder instance for configuring and creating a SecureFileDatabase.
+        ///     Creates a new DatabaseBuilder instance for configuring and creating a SecureFileDatabase
         /// </summary>
+        /// <param name="dbPath">The path where the database file will be stored</param>
+        /// <param name="password">The password used for encrypting the database content</param>
+        /// <returns>A DatabaseBuilder instance for fluent configuration</returns>
+        /// <exception cref="ArgumentNullException">Thrown when dbPath or password is null or empty</exception>
+        /// <remarks>
+        ///     This is the recommended way to create a new SecureFileDatabase instance.
+        ///     Use the returned builder to configure options such as compression, auto-save,
+        ///     and logging before calling Build() to create the database.
+        /// </remarks>
         public static DatabaseBuilder Create(string dbPath, string password)
         {
             if (string.IsNullOrEmpty(dbPath))
@@ -37,6 +56,19 @@ namespace SmallBin.Core
             return new DatabaseBuilder(dbPath, password);
         }
 
+        /// <summary>
+        ///     Initializes a new instance of the SecureFileDatabase class
+        /// </summary>
+        /// <param name="dbPath">The path where the database file will be stored</param>
+        /// <param name="password">The password used for encrypting the database content</param>
+        /// <param name="useCompression">Whether to use compression for stored files</param>
+        /// <param name="useAutoSave">Whether to automatically save changes after operations</param>
+        /// <param name="logger">Optional logger for tracking database operations</param>
+        /// <exception cref="ArgumentNullException">Thrown when dbPath or password is null or empty</exception>
+        /// <remarks>
+        ///     This constructor is internal. Use the Create() method and DatabaseBuilder
+        ///     for creating new instances with proper configuration.
+        /// </remarks>
         internal SecureFileDatabase(
             string dbPath, 
             string password, 
@@ -84,6 +116,14 @@ namespace SmallBin.Core
             }
         }
 
+        /// <summary>
+        ///     Disposes of resources and ensures any pending changes are saved
+        /// </summary>
+        /// <remarks>
+        ///     If auto-save is disabled and there are unsaved changes,
+        ///     this method will attempt to save them before disposing.
+        ///     Any errors during save are logged but not propagated.
+        /// </remarks>
         public void Dispose()
         {
             if (_isDisposed) return;
@@ -109,8 +149,18 @@ namespace SmallBin.Core
         }
 
         /// <summary>
-        ///     Saves a file to the secure database with optional metadata tags and content type.
+        ///     Saves a file to the secure database with optional metadata tags and content type
         /// </summary>
+        /// <param name="filePath">The path to the file to save</param>
+        /// <param name="tags">Optional list of tags to associate with the file</param>
+        /// <param name="contentType">The MIME type of the file content (defaults to application/octet-stream)</param>
+        /// <exception cref="ArgumentNullException">Thrown when filePath is null or empty</exception>
+        /// <exception cref="FileNotFoundException">Thrown when the source file does not exist</exception>
+        /// <exception cref="ObjectDisposedException">Thrown when the database has been disposed</exception>
+        /// <remarks>
+        ///     The file is optionally compressed and always encrypted before storage.
+        ///     If auto-save is enabled, changes are immediately persisted to disk.
+        /// </remarks>
         public void SaveFile(string filePath, List<string>? tags = null, string contentType = "application/octet-stream")
         {
             ThrowIfDisposed();
@@ -126,8 +176,17 @@ namespace SmallBin.Core
         }
 
         /// <summary>
-        ///     Retrieves the file associated with the specified fileId from the database.
+        ///     Retrieves the file associated with the specified fileId from the database
         /// </summary>
+        /// <param name="fileId">The unique identifier of the file to retrieve</param>
+        /// <returns>The decrypted (and decompressed if applicable) file content</returns>
+        /// <exception cref="ArgumentNullException">Thrown when fileId is null or empty</exception>
+        /// <exception cref="KeyNotFoundException">Thrown when the specified file is not found</exception>
+        /// <exception cref="ObjectDisposedException">Thrown when the database has been disposed</exception>
+        /// <remarks>
+        ///     The file content is automatically decrypted and decompressed (if it was compressed)
+        ///     before being returned to the caller.
+        /// </remarks>
         public byte[] GetFile(string fileId)
         {
             ThrowIfDisposed();
@@ -145,8 +204,16 @@ namespace SmallBin.Core
         }
 
         /// <summary>
-        ///     Deletes a file from the database by its unique identifier.
+        ///     Deletes a file from the database by its unique identifier
         /// </summary>
+        /// <param name="fileId">The unique identifier of the file to delete</param>
+        /// <exception cref="ArgumentNullException">Thrown when fileId is null or empty</exception>
+        /// <exception cref="KeyNotFoundException">Thrown when the specified file is not found</exception>
+        /// <exception cref="ObjectDisposedException">Thrown when the database has been disposed</exception>
+        /// <remarks>
+        ///     If auto-save is enabled, changes are immediately persisted to disk.
+        ///     This operation cannot be undone.
+        /// </remarks>
         public void DeleteFile(string fileId)
         {
             ThrowIfDisposed();
@@ -173,8 +240,18 @@ namespace SmallBin.Core
         }
 
         /// <summary>
-        ///     Updates the metadata of a file entry in the secure database.
+        ///     Updates the metadata of a file entry in the secure database
         /// </summary>
+        /// <param name="fileId">The unique identifier of the file to update</param>
+        /// <param name="updateAction">An action that performs the metadata updates</param>
+        /// <exception cref="ArgumentNullException">Thrown when fileId or updateAction is null</exception>
+        /// <exception cref="KeyNotFoundException">Thrown when the specified file is not found</exception>
+        /// <exception cref="ObjectDisposedException">Thrown when the database has been disposed</exception>
+        /// <remarks>
+        ///     The update action is executed within a controlled context that ensures
+        ///     proper tracking of changes. If auto-save is enabled, changes are
+        ///     immediately persisted to disk.
+        /// </remarks>
         public void UpdateMetadata(string fileId, Action<FileEntry> updateAction)
         {
             ThrowIfDisposed();
@@ -200,8 +277,15 @@ namespace SmallBin.Core
         }
 
         /// <summary>
-        ///     Searches for files in the database based on the provided search criteria.
+        ///     Searches for files in the database based on the provided search criteria
         /// </summary>
+        /// <param name="criteria">The search criteria to apply</param>
+        /// <returns>A collection of file entries matching the search criteria</returns>
+        /// <exception cref="ObjectDisposedException">Thrown when the database has been disposed</exception>
+        /// <remarks>
+        ///     If no criteria is specified, all files are returned.
+        ///     The search is case-insensitive and supports partial matches for filenames.
+        /// </remarks>
         public IEnumerable<FileEntry> Search(SearchCriteria? criteria)
         {
             ThrowIfDisposed();
@@ -209,8 +293,15 @@ namespace SmallBin.Core
         }
 
         /// <summary>
-        ///     Persists the current state of the database to disk if there are changes.
+        ///     Persists the current state of the database to disk if there are changes
         /// </summary>
+        /// <exception cref="ObjectDisposedException">Thrown when the database has been disposed</exception>
+        /// <exception cref="DatabaseOperationException">Thrown when the save operation fails</exception>
+        /// <remarks>
+        ///     This method only writes to disk if there are unsaved changes.
+        ///     It implements a safe-save mechanism using temporary files and backups
+        ///     to prevent data loss during save operations.
+        /// </remarks>
         public void Save()
         {
             ThrowIfDisposed();
