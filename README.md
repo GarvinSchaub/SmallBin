@@ -1,8 +1,11 @@
-﻿# SmallBin
+# SmallBin
+
+[![NuGet](https://img.shields.io/nuget/v/SmallBin.svg)](https://www.nuget.org/packages/SmallBin/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 SmallBin is a lightweight, secure file storage library for .NET that enables storing multiple files in a single encrypted container with metadata support and comprehensive logging capabilities.
 
-## Features
+## 🔑 Key Features
 
 - Single-file encrypted database
 - Password-based encryption (AES-256)
@@ -13,13 +16,13 @@ SmallBin is a lightweight, secure file storage library for .NET that enables sto
 - Flexible logging system with console and file output
 - Extensible logging interface
 
-## Installation
+## 📦 Installation
 
-```bash
+```shell
 dotnet add package SmallBin
 ```
 
-## Usage
+## 🚀 Quick Start
 
 ### Creating a New Database
 
@@ -36,6 +39,9 @@ using var db = SecureFileDatabase.Create("mydata.sdb", "password123")
     .WithAutoSave()       // Optional: enable auto-save (disabled by default)
     .WithLogger(logger)   // Optional: add logging support
     .Build();
+
+// The builder pattern makes it clear which options are being configured
+// and allows for future extensibility without breaking changes
 ```
 
 ### Adding Files
@@ -75,21 +81,6 @@ var photoFiles = db.Search(new SearchCriteria
 { 
     Tags = new List<string> { "photos" } 
 });
-
-// Advanced search with multiple criteria
-var searchCriteria = new SearchCriteria
-{
-    FileName = "report",
-    Tags = new List<string> { "important" },
-    StartDate = DateTime.Now.AddDays(-7),
-    EndDate = DateTime.Now,
-    ContentType = "application/pdf",
-    CustomMetadata = new Dictionary<string, string>
-    {
-        { "author", "John Doe" }
-    }
-};
-var results = db.Search(searchCriteria);
 ```
 
 ### Managing Metadata
@@ -134,7 +125,32 @@ var db = SecureFileDatabase.Create("mydata.sdb", "password123")
     .Build();
 ```
 
-## WPF Application Example
+### Configuring Logging
+
+```csharp
+// Console logging
+var consoleLogger = new ConsoleLogger();
+
+// File logging
+var fileLogger = new FileLogger("app.log");
+
+// Custom logging by implementing ILogger
+public class CustomLogger : ILogger
+{
+    public void Log(string message)
+    {
+        // Custom logging implementation
+    }
+}
+
+// Using multiple loggers
+var db = SecureFileDatabase.Create("mydata.sdb", "password123")
+    .WithLogger(consoleLogger)
+    .WithLogger(fileLogger)
+    .Build();
+```
+
+## 🖥️ WPF Application Example
 
 ```csharp
 public partial class MainWindow : Window
@@ -165,20 +181,63 @@ public partial class MainWindow : Window
 }
 ```
 
-## Security Considerations
+## 🔒 Security Considerations
 
 - Passwords should be strong and securely stored
 - Database files contain encrypted content
 - Each file has its own encryption IV
 - Uses PBKDF2 for key derivation
 - All operations are logged for security auditing
-- AES-256 encryption for maximum security
-- Thread-safe operations for concurrent access
 
-## License
+## 📄 License
 
-MIT License
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Contributing
+## 👥 Contributing
 
 Contributions welcome! NEVER submit pull requests directly to the main branch.
+
+## Version Impact
+| Type | Version Change | When to Use |
+|------|---------------|-------------|
+| `breaking:` | MAJOR (1.0.0) | Incompatible API changes, removing features |
+| `major:` | MAJOR (1.0.0) | Same as breaking |
+| `feat:` | MINOR (0.1.0) | New features, capabilities, or enhancements |
+| `fix:` | PATCH (0.0.1) | Bug fixes, correcting behavior |
+| `refactor:` | PATCH | Code restructuring without behavior change |
+| `chore:` | PATCH | Build process, dependencies, tooling |
+| `style:` | PATCH | Code formatting, naming (no logic change) |
+| `test:` | PATCH | Adding/modifying tests |
+| `docs:` | NONE | Documentation only |
+| `ci:` | NONE | CI/CD changes |
+
+## Examples
+```
+breaking: remove support for XML config files
+feat: add dark mode theme support
+fix: prevent crash when user input is empty
+chore: update NuGet packages
+refactor: simplify login logic
+style: fix code indentation
+test: add unit tests for auth service
+docs: update API documentation
+ci: add new deploy stage
+```
+
+## Additional Tips
+- Use present tense ("add feature" not "added feature")
+- Keep first line under 70 characters
+- Add scope for clarity: `feat(auth):`, `fix(db):`
+- Include ticket number if needed: `feat: add login (#123)`
+
+## ⭐ Show Your Support
+
+If you find this project useful, please consider giving it a star on GitHub!
+
+<a href="https://star-history.com/#GarvinSchaub/SmallBin&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=GarvinSchaub/SmallBin&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=GarvinSchaub/SmallBin&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=GarvinSchaub/SmallBin&type=Date" />
+ </picture>
+</a>
