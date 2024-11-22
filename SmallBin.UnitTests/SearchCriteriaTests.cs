@@ -1,4 +1,8 @@
-﻿namespace SmallBin.UnitTests;
+﻿using SmallBin.Logging;
+using SmallBin.Core;
+using SmallBin.Models;
+
+namespace SmallBin.UnitTests;
 
 public class SearchCriteriaTests
 {

@@ -1,11 +1,12 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Security.Cryptography;
 using SmallBin.Exceptions;
 using SmallBin.Logging;
+using SmallBin.Models;
 using SmallBin.Services;
 
-namespace SmallBin
+namespace SmallBin.Core
 {
     /// <summary>
     ///     The SecureFileDatabase class provides secure storage,

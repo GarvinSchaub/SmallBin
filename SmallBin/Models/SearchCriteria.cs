@@ -1,7 +1,7 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
-namespace SmallBin
+namespace SmallBin.Models
 {
     /// <summary>
     ///     Represents a set of criteria to filter search results in the database

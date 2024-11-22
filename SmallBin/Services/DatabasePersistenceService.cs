@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using SmallBin.Exceptions;
 using SmallBin.Logging;
+using SmallBin.Models;
 
 namespace SmallBin.Services
 {

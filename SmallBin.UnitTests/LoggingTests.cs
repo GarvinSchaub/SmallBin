@@ -6,6 +6,8 @@ using System.Threading;
 using System.Linq;
 using Xunit;
 using SmallBin.Logging;
+using SmallBin.Core;
+using SmallBin.Models;
 
 namespace SmallBin.UnitTests
 {
