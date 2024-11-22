@@ -6,9 +6,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-
-// ReSharper disable HeapView.ObjectAllocation.Evident
-// ReSharper disable HeapView.ObjectAllocation
+using SmallBin.Logging;
 
 namespace SmallBin
 {
@@ -23,45 +21,19 @@ namespace SmallBin
     /// var db = SecureFileDatabase.Create("path/to/db", "password")
     ///     .WithoutCompression()  // Optional: disable compression
     ///     .WithAutoSave()        // Optional: enable auto-save
+    ///     .WithConsoleLogging()  // Optional: enable console logging
     ///     .Build();
     /// </code>
     /// </example>
     public class SecureFileDatabase : IDisposable
     {
-        /// <summary>
-        ///     Represents the in-memory storage of the file database.
-        ///     This field holds all the database entries in a structured format,
-        ///     allowing for easy retrieval and manipulation of the files stored within the database.
-        /// </summary>
         private readonly DatabaseContent _database;
-
-        /// <summary>
-        ///     The file path where the database is stored.
-        /// </summary>
         private readonly string _dbPath;
-
-        /// <summary>
-        ///     Holds the cryptographic key derived from the user's password.
-        ///     This key is used to encrypt and decrypt the file contents and database entries.
-        /// </summary>
         private readonly byte[] _key;
-
-        /// <summary>
-        ///     Indicates whether compression should be used for file storage.
-        ///     When set to true, files will be compressed before being stored to reduce space usage.
-        ///     Defaults to true.
-        /// </summary>
         private readonly bool _useCompression;
-
-        /// <summary>
-        ///     Indicates whether the internal state of the SecureFileDatabase
-        ///     has been modified since the last save operation. When set to true,
-        ///     it signifies that there are unsaved changes that need to be persisted
-        ///     to disk to maintain data integrity.
-        /// </summary>
+        private readonly bool _useAutoSave;
+        private readonly ILogger? _logger;
         private bool _isDirty;
-
-        private bool _useAutoSave;
 
         /// <summary>
         ///     Creates a new DatabaseBuilder instance for configuring and creating a SecureFileDatabase.
@@ -78,7 +50,12 @@ namespace SmallBin
         ///     Internal constructor used by DatabaseBuilder to create a new instance of SecureFileDatabase.
         ///     To create a new database, use the static Create method instead.
         /// </summary>
-        internal SecureFileDatabase(string dbPath, string password, bool useCompression = true, bool useAutoSave = false)
+        internal SecureFileDatabase(
+            string dbPath, 
+            string password, 
+            bool useCompression = true, 
+            bool useAutoSave = false,
+            ILogger? logger = null)
         {
             if (string.IsNullOrEmpty(dbPath) || string.IsNullOrWhiteSpace(dbPath))
                 throw new ArgumentNullException(nameof(dbPath));
@@ -89,7 +66,11 @@ namespace SmallBin
             _dbPath = dbPath;
             _useCompression = useCompression;
             _useAutoSave = useAutoSave;
+            _logger = logger;
             _database = new DatabaseContent();
+
+            _logger?.Debug($"Initializing database at {dbPath}");
+            _logger?.Debug($"Compression: {(_useCompression ? "enabled" : "disabled")}, Auto-save: {(_useAutoSave ? "enabled" : "disabled")}");
 
             using var deriveBytes = new Rfc2898DeriveBytes(
                 password,
@@ -98,14 +79,20 @@ namespace SmallBin
             _key = deriveBytes.GetBytes(32);
 
             var directory = Path.GetDirectoryName(dbPath) ?? string.Empty;
-            if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
+            if (!string.IsNullOrEmpty(directory))
+            {
+                Directory.CreateDirectory(directory);
+                _logger?.Debug($"Created directory: {directory}");
+            }
 
             if (File.Exists(dbPath))
             {
+                _logger?.Info("Loading existing database");
                 LoadDatabase();
             }
             else
             {
+                _logger?.Info("Creating new database");
                 _isDirty = true;
                 Save();
             }
@@ -118,7 +105,14 @@ namespace SmallBin
         /// </summary>
         public void Dispose()
         {
-            if (_isDirty) Save();
+            if (_isDirty)
+            {
+                _logger?.Debug("Saving changes before disposal");
+                Save();
+            }
+
+            _logger?.Debug("Disposing database");
+            _logger?.Dispose();
         }
 
         /// <summary>
@@ -135,14 +129,22 @@ namespace SmallBin
             string contentType = "application/octet-stream")
         {
             if (!File.Exists(filePath))
+            {
+                _logger?.Error($"File not found: {filePath}");
                 throw new FileNotFoundException("Source file not found.", filePath);
+            }
 
+            _logger?.Info($"Saving file: {filePath}");
             var fileInfo = new FileInfo(filePath);
             var fileContent = File.ReadAllBytes(filePath);
 
-            if (_useCompression) fileContent = Compress(fileContent);
+            if (_useCompression)
+            {
+                _logger?.Debug("Compressing file content");
+                fileContent = Compress(fileContent);
+            }
 
-            // Encrypt the file content
+            _logger?.Debug("Encrypting file content");
             using var aes = Aes.Create();
             aes.Key = _key;
             aes.GenerateIV();
@@ -160,7 +162,6 @@ namespace SmallBin
             var entry = new FileEntry
             {
                 FileName = Path.GetFileName(filePath),
-                // ReSharper disable once NullCoalescingConditionIsAlwaysNotNullAccordingToAPIContract
                 Tags = tags ?? new List<string>(),
                 CreatedOn = DateTime.UtcNow,
                 UpdatedOn = DateTime.UtcNow,
@@ -174,8 +175,13 @@ namespace SmallBin
             _database.Files[entry.Id] = entry;
             _isDirty = true;
 
+            _logger?.Info($"File saved successfully. ID: {entry.Id}");
+
             if (_useAutoSave)
+            {
+                _logger?.Debug("Auto-save enabled, saving changes");
                 Save();
+            }
         }
 
         /// <summary>
@@ -187,9 +193,15 @@ namespace SmallBin
         /// <exception cref="KeyNotFoundException">Thrown when the specified fileId does not exist in the database.</exception>
         public byte[] GetFile(string fileId)
         {
-            if (!_database.Files.TryGetValue(fileId, out var entry))
-                throw new KeyNotFoundException("File not found in database.");
+            _logger?.Debug($"Retrieving file: {fileId}");
 
+            if (!_database.Files.TryGetValue(fileId, out var entry))
+            {
+                _logger?.Error($"File not found in database: {fileId}");
+                throw new KeyNotFoundException("File not found in database.");
+            }
+
+            _logger?.Debug("Decrypting file content");
             using var aes = Aes.Create();
             aes.Key = _key;
             aes.IV = entry.IV;
@@ -204,16 +216,16 @@ namespace SmallBin
                 decryptedContent = ms.ToArray();
             }
 
-            if (entry.IsCompressed) decryptedContent = Decompress(decryptedContent);
+            if (entry.IsCompressed)
+            {
+                _logger?.Debug("Decompressing file content");
+                decryptedContent = Decompress(decryptedContent);
+            }
 
+            _logger?.Info($"File retrieved successfully: {entry.FileName}");
             return decryptedContent;
         }
 
-        /// <summary>
-        ///     Compresses the given byte array using GZip compression.
-        /// </summary>
-        /// <param name="data">The byte array to be compressed.</param>
-        /// <returns>The compressed byte array.</returns>
         private static byte[] Compress(byte[] data)
         {
             using var compressedStream = new MemoryStream();
@@ -225,11 +237,6 @@ namespace SmallBin
             return compressedStream.ToArray();
         }
 
-        /// <summary>
-        ///     Decompresses the given byte array which is compressed using GZip compression algorithm.
-        /// </summary>
-        /// <param name="compressedData">The byte array containing the compressed data.</param>
-        /// <returns>A byte array containing the decompressed data.</returns>
         private static byte[] Decompress(byte[] compressedData)
         {
             using var compressedStream = new MemoryStream(compressedData);
@@ -242,50 +249,55 @@ namespace SmallBin
             return decompressedStream.ToArray();
         }
 
-        /// <summary>
-        ///     Loads the database from the file specified in the constructor,
-        ///     decrypting the content using the provided password and initializing
-        ///     the in-memory representation of the database. This method is
-        ///     automatically called during the initialization if the database file
-        ///     exists. It ensures that the database content is securely loaded and
-        ///     ready for operations.
-        /// </summary>
-        /// <exception cref="InvalidOperationException">
-        ///     Thrown when the database file is corrupt or invalid.
-        /// </exception>
         private void LoadDatabase()
         {
-            var fileContent = File.ReadAllBytes(_dbPath);
-            if (fileContent.Length < 16)
-                throw new InvalidOperationException("Database file is corrupt or invalid");
-
-            var iv = new byte[16];
-            Array.Copy(fileContent, 0, iv, 0, 16);
-
-            var encryptedContent = new byte[fileContent.Length - 16];
-            Array.Copy(fileContent, 16, encryptedContent, 0, encryptedContent.Length);
-
-            using var aes = Aes.Create();
-            aes.Key = _key;
-            aes.IV = iv;
-
-            string json;
-            using (new MemoryStream())
+            try
             {
-                using var decryptor = aes.CreateDecryptor();
-                using var cs = new CryptoStream(new MemoryStream(encryptedContent), decryptor, CryptoStreamMode.Read);
-                using var reader = new StreamReader(cs);
-                json = reader.ReadToEnd();
+                var fileContent = File.ReadAllBytes(_dbPath);
+                if (fileContent.Length < 16)
+                {
+                    _logger?.Error("Database file is corrupt or invalid (file too small)");
+                    throw new InvalidOperationException("Database file is corrupt or invalid");
+                }
+
+                var iv = new byte[16];
+                Array.Copy(fileContent, 0, iv, 0, 16);
+
+                var encryptedContent = new byte[fileContent.Length - 16];
+                Array.Copy(fileContent, 16, encryptedContent, 0, encryptedContent.Length);
+
+                using var aes = Aes.Create();
+                aes.Key = _key;
+                aes.IV = iv;
+
+                string json;
+                using (new MemoryStream())
+                {
+                    using var decryptor = aes.CreateDecryptor();
+                    using var cs = new CryptoStream(new MemoryStream(encryptedContent), decryptor, CryptoStreamMode.Read);
+                    using var reader = new StreamReader(cs);
+                    json = reader.ReadToEnd();
+                }
+
+                var loadedDb = JsonSerializer.Deserialize<DatabaseContent>(json);
+                if (loadedDb == null)
+                {
+                    _logger?.Warning("Loaded database content is null");
+                    return;
+                }
+
+                _database.Files.Clear();
+                foreach (var entry in loadedDb.Files)
+                    _database.Files[entry.Key] = entry.Value;
+
+                _database.Version = loadedDb.Version;
+                _logger?.Info($"Database loaded successfully. Files: {_database.Files.Count}");
             }
-
-
-            var loadedDb = JsonSerializer.Deserialize<DatabaseContent>(json);
-            if (loadedDb == null) return;
-
-            _database.Files.Clear();
-            foreach (var entry in loadedDb.Files) _database.Files[entry.Key] = entry.Value;
-
-            _database.Version = loadedDb.Version;
+            catch (Exception ex)
+            {
+                _logger?.Error("Failed to load database", ex);
+                throw;
+            }
         }
 
         /// <summary>
@@ -295,11 +307,17 @@ namespace SmallBin
         /// <exception cref="KeyNotFoundException">Thrown when the specified fileId does not exist in the database.</exception>
         public void DeleteFile(string fileId)
         {
+            _logger?.Debug($"Deleting file: {fileId}");
+
             if (!_database.Files.ContainsKey(fileId))
+            {
+                _logger?.Error($"File not found in database: {fileId}");
                 throw new KeyNotFoundException("File not found in database.");
+            }
 
             _database.Files.Remove(fileId);
             _isDirty = true;
+            _logger?.Info($"File deleted successfully: {fileId}");
         }
 
         /// <summary>
@@ -314,8 +332,13 @@ namespace SmallBin
         /// <exception cref="IOException">Thrown if there are errors during file operations.</exception>
         public void Save()
         {
-            if (!_isDirty) return;
+            if (!_isDirty)
+            {
+                _logger?.Debug("No changes to save");
+                return;
+            }
 
+            _logger?.Info("Saving database changes");
             var tempPath = $"{_dbPath}.tmp";
             var backupPath = $"{_dbPath}.bak";
             var oldBackupPath = $"{_dbPath}.bak.old";
@@ -327,6 +350,7 @@ namespace SmallBin
                 var json = JsonSerializer.Serialize(_database, jsonOptions);
                 var jsonBytes = Encoding.UTF8.GetBytes(json);
 
+                _logger?.Debug("Writing encrypted content to temporary file");
                 using (var aes = Aes.Create())
                 {
                     aes.Key = _key;
@@ -343,11 +367,15 @@ namespace SmallBin
                 }
 
                 if (new FileInfo(tempPath).Length <= 16)
+                {
+                    _logger?.Error("Failed to write database content (file too small)");
                     throw new InvalidOperationException("Failed to write database content");
+                }
 
                 // Backup existing file if it exists
                 if (File.Exists(_dbPath))
                 {
+                    _logger?.Debug("Creating backup of existing database");
                     // Remove old backup if it exists
                     if (File.Exists(backupPath))
                     {
@@ -359,17 +387,23 @@ namespace SmallBin
                 }
 
                 // Replace current file with new content
+                _logger?.Debug("Replacing current database file with new content");
                 if (File.Exists(_dbPath))
                     File.Delete(_dbPath);
                 File.Copy(tempPath, _dbPath);
 
                 _isDirty = false;
+                _logger?.Info("Database saved successfully");
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                _logger?.Error("Failed to save database", ex);
                 // On error, try to restore from backup
                 if (File.Exists(backupPath) && !File.Exists(_dbPath))
+                {
+                    _logger?.Warning("Attempting to restore from backup");
                     File.Copy(backupPath, _dbPath);
+                }
 
                 throw;
             }
@@ -377,11 +411,17 @@ namespace SmallBin
             {
                 // Clean up temporary file
                 if (File.Exists(tempPath))
+                {
                     File.Delete(tempPath);
+                    _logger?.Debug("Cleaned up temporary file");
+                }
                 
                 // Clean up old backup
                 if (File.Exists(oldBackupPath))
+                {
                     File.Delete(oldBackupPath);
+                    _logger?.Debug("Cleaned up old backup file");
+                }
             }
         }
 
@@ -393,12 +433,18 @@ namespace SmallBin
         /// <exception cref="KeyNotFoundException">Thrown when the specified fileId does not exist in the database.</exception>
         public void UpdateMetadata(string fileId, Action<FileEntry> updateAction)
         {
+            _logger?.Debug($"Updating metadata for file: {fileId}");
+
             if (!_database.Files.TryGetValue(fileId, out var entry))
+            {
+                _logger?.Error($"File not found in database: {fileId}");
                 throw new KeyNotFoundException("File not found in database.");
+            }
 
             updateAction(entry);
             entry.UpdatedOn = DateTime.UtcNow;
             _isDirty = true;
+            _logger?.Info($"Metadata updated successfully for file: {fileId}");
         }
 
         /// <summary>
@@ -406,16 +452,18 @@ namespace SmallBin
         /// </summary>
         /// <param name="criteria">The criteria used to filter the search results.</param>
         /// <returns>A collection of <c>FileEntry</c> objects that match the specified search criteria.</returns>
-        // ReSharper disable once HeapView.ClosureAllocation
         public IEnumerable<FileEntry> Search(SearchCriteria criteria)
         {
+            _logger?.Debug($"Searching files with criteria: {criteria?.FileName ?? "all"}");
+
             var query = _database.Files.Values.AsEnumerable();
 
             if (!string.IsNullOrWhiteSpace(criteria?.FileName))
-                // ReSharper disable once HeapView.DelegateAllocation
                 query = query.Where(e => e.FileName.Contains(criteria?.FileName, StringComparison.OrdinalIgnoreCase));
 
-            return query.ToList();
+            var results = query.ToList();
+            _logger?.Info($"Search completed. Found {results.Count} matches");
+            return results;
         }
     }
 }
