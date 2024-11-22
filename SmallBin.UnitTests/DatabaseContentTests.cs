@@ -1,7 +1,7 @@
-﻿namespace SmallBin.UnitTests;
-using SmallBin.Logging;
-using SmallBin.Core;
-using SmallBin.Models;
+﻿using SmallBin.Models;
+
+namespace SmallBin.UnitTests;
+
 public class DatabaseContentTests
 {
     [Fact]
@@ -34,12 +34,12 @@ public class DatabaseContentTests
         var fileId = "test-file-1";
 
         // Act
-        dbContent.Files.Add(fileId, fileEntry);
+        dbContent.Files?.Add(fileId, fileEntry);
 
         // Assert
-        Assert.Single(dbContent.Files);
-        Assert.Contains(fileId, dbContent.Files.Keys);
-        Assert.Same(fileEntry, dbContent.Files[fileId]);
+        Assert.Single(dbContent.Files!);
+        Assert.Contains(fileId, dbContent.Files?.Keys!);
+        Assert.Same(fileEntry, dbContent.Files![fileId]);
     }
 
     [Fact]
@@ -49,8 +49,8 @@ public class DatabaseContentTests
         var dbContent = new DatabaseContent();
         var newFiles = new Dictionary<string, FileEntry>
         {
-            { "file1", new FileEntry() },
-            { "file2", new FileEntry() }
+            ["file1"] = new(),
+            ["file2"] = new()
         };
 
         // Act
@@ -81,7 +81,7 @@ public class DatabaseContentTests
         // Arrange
         var dbContent = new DatabaseContent();
         var fileId = "test-file";
-        dbContent.Files.Add(fileId, new FileEntry());
+        dbContent.Files.Add(fileId, new());
 
         // Act
         var removed = dbContent.Files.Remove(fileId);
@@ -96,14 +96,14 @@ public class DatabaseContentTests
     {
         // Arrange
         var dbContent = new DatabaseContent();
-        dbContent.Files.Add("file1", new FileEntry());
-        dbContent.Files.Add("file2", new FileEntry());
+        dbContent.Files?.Add("file1", new());
+        dbContent.Files?.Add("file2", new());
 
         // Act
-        dbContent.Files.Clear();
+        dbContent.Files?.Clear();
 
         // Assert
-        Assert.Empty(dbContent.Files);
+        Assert.Empty(dbContent.Files!);
     }
 
     [Fact]
@@ -112,11 +112,11 @@ public class DatabaseContentTests
         // Arrange
         var dbContent = new DatabaseContent();
         var fileId = "duplicate-file";
-        dbContent.Files.Add(fileId, new FileEntry());
+        dbContent.Files.Add(fileId, new());
 
         // Act & Assert
         Assert.Throws<ArgumentException>(() => 
-            dbContent.Files.Add(fileId, new FileEntry()));
+            dbContent.Files.Add(fileId, new()));
     }
 
     [Fact]
@@ -127,7 +127,7 @@ public class DatabaseContentTests
 
         // Act & Assert
         Assert.Throws<ArgumentNullException>(() => 
-            dbContent.Files.Add(null, new FileEntry()));
+            dbContent.Files.Add(null, new()));
     }
 
     [Fact]
@@ -139,8 +139,8 @@ public class DatabaseContentTests
         var upperCaseKey = "TESTFILE";
 
         // Act
-        dbContent.Files.Add(lowerCaseKey, new FileEntry());
-        dbContent.Files.Add(upperCaseKey, new FileEntry());
+        dbContent.Files.Add(lowerCaseKey, new());
+        dbContent.Files.Add(upperCaseKey, new());
 
         // Assert
         Assert.Equal(2, dbContent.Files.Count);
@@ -158,7 +158,7 @@ public class DatabaseContentTests
         var dbContent = new DatabaseContent();
 
         // Act
-        dbContent.Files.Add(key, new FileEntry());
+        dbContent.Files.Add(key, new());
 
         // Assert
         Assert.Single(dbContent.Files);
