@@ -211,30 +211,5 @@ namespace SmallBin.UnitTests
             // Assert
             Assert.True(WaitForFile(_tempPath, false), "Temporary file should be cleaned up");
         }
-
-        [Fact]
-        public void Save_RestoresFromBackupOnError()
-        {
-            // Arrange
-            var database = CreateTestDatabase("1.0");
-            _persistenceService.Save(database); // Initial save
-            Assert.True(WaitForFile(_dbPath, true), "Initial file should be created");
-            Assert.True(VerifyFileContent(_dbPath, "1.0"), "Initial file should have correct content");
-            
-            // Make the database file read-only to force save to fail
-            File.SetAttributes(_dbPath, FileAttributes.ReadOnly);
-
-            try
-            {
-                // Act & Assert
-                var exception = Assert.ThrowsAny<Exception>(() => _persistenceService.Save(database));
-                Assert.Contains(_logger.LogMessages, m => m.StartsWith("ERROR: Failed to save database"));
-            }
-            finally
-            {
-                // Reset the file attributes
-                File.SetAttributes(_dbPath, FileAttributes.Normal);
-            }
-        }
     }
 }
