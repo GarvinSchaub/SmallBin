@@ -1,6 +1,6 @@
 ﻿# SmallBin
 
-SmallBin is a lightweight, secure file storage library for .NET that enables storing multiple files in a single encrypted container with metadata support.
+SmallBin is a lightweight, secure file storage library for .NET that enables storing multiple files in a single encrypted container with metadata support and comprehensive logging capabilities.
 
 ## Features
 
@@ -10,6 +10,8 @@ SmallBin is a lightweight, secure file storage library for .NET that enables sto
 - File compression support
 - Search functionality
 - Thread-safe operations
+- Flexible logging system with console and file output
+- Extensible logging interface
 
 ## Installation
 
@@ -23,9 +25,20 @@ dotnet add package SmallBin
 
 ```csharp
 using SmallBin;
+using SmallBin.Logging;
 
-// Create or open an encrypted database
-using var db = new SecureFileDatabase("mydata.sdb", "password123");
+// Optional: Configure logging
+var logger = new ConsoleLogger(); // or new FileLogger("app.log")
+
+// Create or open an encrypted database using the builder pattern
+using var db = SecureFileDatabase.Create("mydata.sdb", "password123")
+    .WithoutCompression()  // Optional: disable compression (enabled by default)
+    .WithAutoSave()       // Optional: enable auto-save (disabled by default)
+    .WithLogger(logger)   // Optional: add logging support
+    .Build();
+
+// The builder pattern makes it clear which options are being configured
+// and allows for future extensibility without breaking changes
 ```
 
 ### Adding Files
@@ -84,16 +97,46 @@ db.UpdateMetadata(fileId, entry =>
 db.DeleteFile(fileId);
 ```
 
+### Configuring Logging
+
+```csharp
+// Console logging
+var consoleLogger = new ConsoleLogger();
+
+// File logging
+var fileLogger = new FileLogger("app.log");
+
+// Custom logging by implementing ILogger
+public class CustomLogger : ILogger
+{
+    public void Log(string message)
+    {
+        // Custom logging implementation
+    }
+}
+
+// Using multiple loggers
+var db = SecureFileDatabase.Create("mydata.sdb", "password123")
+    .WithLogger(consoleLogger)
+    .WithLogger(fileLogger)
+    .Build();
+```
+
 ## WPF Application Example
 
 ```csharp
 public partial class MainWindow : Window
 {
     private SecureFileDatabase _db;
+    private ILogger _logger;
 
     private void OpenDatabase()
     {
-        _db = new SecureFileDatabase("data.sdb", "password123");
+        _logger = new FileLogger("app.log");
+        _db = SecureFileDatabase.Create("data.sdb", "password123")
+            .WithAutoSave() // Enable auto-save for WPF applications
+            .WithLogger(_logger)
+            .Build();
     }
 
     private void AddFile_Click(object sender, RoutedEventArgs e)
@@ -116,6 +159,7 @@ public partial class MainWindow : Window
 - Database files contain encrypted content
 - Each file has its own encryption IV
 - Uses PBKDF2 for key derivation
+- All operations are logged for security auditing
 
 ## License
 

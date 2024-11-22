@@ -1,5 +1,7 @@
 ﻿namespace SmallBin.UnitTests;
-
+using SmallBin.Logging;
+using SmallBin.Core;
+using SmallBin.Models;
 using Xunit;
 using System;
 using System.Collections.Generic;
