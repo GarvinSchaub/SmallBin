@@ -1,6 +1,4 @@
-﻿using SmallBin.Logging;
-using SmallBin.Core;
-using SmallBin.Models;
+﻿using SmallBin.Models;
 
 namespace SmallBin.UnitTests;
 

@@ -21,15 +21,14 @@ namespace SmallBin.Models
         /// </summary>
         /// <value>
         ///     A dictionary where the key is a string representing the file identifier,
-        ///     and the value is an instance of <see cref="FileEntry" /> containing file details
+        ///     and the value is an instance of <see cref="FileEntry"/> containing file details.
+        ///     Can be null, though typically initialized with an empty dictionary.
         /// </value>
         /// <remarks>
         ///     The dictionary structure provides O(1) lookup of files by their ID.
         ///     File entries are stored with their complete metadata and encrypted content.
-        ///     The dictionary is initialized as empty to ensure it's never null.
         /// </remarks>
-        // ReSharper disable once HeapView.ObjectAllocation.Evident
-        public Dictionary<string, FileEntry> Files { get; set; } = new Dictionary<string, FileEntry>();
+        public Dictionary<string, FileEntry>? Files { get; set; } = new Dictionary<string, FileEntry>();
 
         /// <summary>
         ///     Gets or sets the version of the database content
@@ -38,7 +37,8 @@ namespace SmallBin.Models
         ///     The version string follows semantic versioning (MAJOR.MINOR) format.
         ///     This version represents the database schema version, not the application version.
         ///     Changes to this version indicate structural changes to the database format.
+        ///     Can be null, though typically initialized to "1.0".
         /// </remarks>
-        public string Version { get; set; } = "1.0";
+        public string? Version { get; set; } = "1.0";
     }
 }

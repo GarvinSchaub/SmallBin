@@ -1,8 +1,6 @@
-using System;
 using System.Text;
 using SmallBin.Exceptions;
 using SmallBin.Services;
-using Xunit;
 
 namespace SmallBin.UnitTests
 {
