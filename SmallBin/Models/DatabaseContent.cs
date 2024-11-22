@@ -1,6 +1,6 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 
-namespace SmallBin
+namespace SmallBin.Models
 {
     /// <summary>
     ///     Represents the content of a database, including a collection of files and the version of the content.

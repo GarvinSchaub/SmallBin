@@ -3,7 +3,7 @@ using System.IO;
 using SmallBin.Exceptions;
 using SmallBin.Logging;
 
-namespace SmallBin
+namespace SmallBin.Core
 {
     /// <summary>
     /// Builder class for creating instances of SecureFileDatabase with configurable options.

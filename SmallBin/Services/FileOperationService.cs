@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using SmallBin.Exceptions;
 using SmallBin.Logging;
+using SmallBin.Models;
 
 namespace SmallBin.Services
 {
