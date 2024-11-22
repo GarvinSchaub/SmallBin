@@ -2,10 +2,10 @@ mode: ContinuousDelivery
 assembly-versioning-scheme: MajorMinorPatch
 assembly-file-versioning-scheme: MajorMinorPatch
 tag-prefix: '[vV]'
-major-version-bump-message: '\+semver:\s?(breaking|major)'
-minor-version-bump-message: '\+semver:\s?(feature|minor)'
-patch-version-bump-message: '\+semver:\s?(fix|patch)'
-no-bump-message: '\+semver:\s?(none|skip)'
+major-version-bump-message: '(breaking|major):'
+minor-version-bump-message: 'feat:'
+patch-version-bump-message: '(fix|refactor|chore|style|test):'
+no-bump-message: '(docs|ci):'
 commit-message-incrementing: Enabled
 
 branches:
