@@ -8,12 +8,27 @@ using SmallBin.Models;
 
 namespace SmallBin.Services
 {
+    /// <summary>
+    ///     Provides persistence operations for the secure file database
+    /// </summary>
+    /// <remarks>
+    ///     This service handles loading and saving the database file, including encryption
+    ///     of the database content. It implements a safe-save mechanism using temporary
+    ///     files and backups to prevent data loss during save operations.
+    /// </remarks>
     internal class DatabasePersistenceService
     {
         private readonly string _dbPath;
         private readonly EncryptionService _encryptionService;
         private readonly ILogger? _logger;
 
+        /// <summary>
+        ///     Initializes a new instance of the DatabasePersistenceService class
+        /// </summary>
+        /// <param name="dbPath">The path where the database file will be stored</param>
+        /// <param name="encryptionService">The service used for encrypting and decrypting database content</param>
+        /// <param name="logger">Optional logger for tracking persistence operations</param>
+        /// <exception cref="ArgumentNullException">Thrown when dbPath or encryptionService is null</exception>
         public DatabasePersistenceService(string dbPath, EncryptionService encryptionService, ILogger? logger = null)
         {
             _dbPath = dbPath ?? throw new ArgumentNullException(nameof(dbPath));
@@ -21,6 +36,16 @@ namespace SmallBin.Services
             _logger = logger;
         }
 
+        /// <summary>
+        ///     Loads and decrypts the database content from disk
+        /// </summary>
+        /// <returns>The decrypted database content</returns>
+        /// <exception cref="DatabaseCorruptException">Thrown when the database file is corrupt or invalid</exception>
+        /// <exception cref="DatabaseEncryptionException">Thrown when decryption fails</exception>
+        /// <remarks>
+        ///     The database file format consists of a 16-byte IV followed by the encrypted content.
+        ///     The content is encrypted using AES encryption and stored in JSON format.
+        /// </remarks>
         public DatabaseContent Load()
         {
             var fileContent = File.ReadAllBytes(_dbPath);
@@ -61,6 +86,22 @@ namespace SmallBin.Services
             }
         }
 
+        /// <summary>
+        ///     Encrypts and saves the database content to disk
+        /// </summary>
+        /// <param name="database">The database content to save</param>
+        /// <exception cref="InvalidDatabaseStateException">Thrown when the save operation produces an invalid file</exception>
+        /// <exception cref="DatabaseOperationException">Thrown when the save operation fails</exception>
+        /// <remarks>
+        ///     Implements a safe-save mechanism using temporary files and backups:
+        ///     1. Writes new content to a temporary file
+        ///     2. Creates a backup of the existing database file
+        ///     3. Replaces the current file with the new content
+        ///     4. Cleans up temporary files
+        ///     
+        ///     If an error occurs during save, attempts to restore from backup.
+        ///     All operations are logged for debugging and auditing purposes.
+        /// </remarks>
         public void Save(DatabaseContent database)
         {
             var tempPath = $"{_dbPath}.tmp";

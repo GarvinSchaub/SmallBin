@@ -7,6 +7,14 @@ using SmallBin.Models;
 
 namespace SmallBin.Services
 {
+    /// <summary>
+    ///     Provides core file operations for the secure file database
+    /// </summary>
+    /// <remarks>
+    ///     This service handles saving, retrieving, and updating files in the database.
+    ///     It coordinates encryption and compression operations, manages file metadata,
+    ///     and provides logging of all file operations for security auditing.
+    /// </remarks>
     internal class FileOperationService
     {
         private readonly EncryptionService _encryptionService;
@@ -14,6 +22,14 @@ namespace SmallBin.Services
         private readonly bool _useCompression;
         private readonly ILogger? _logger;
 
+        /// <summary>
+        ///     Initializes a new instance of the FileOperationService class
+        /// </summary>
+        /// <param name="encryptionService">The service used for encrypting and decrypting file content</param>
+        /// <param name="compressionService">The service used for compressing and decompressing file content</param>
+        /// <param name="useCompression">Whether to use compression for stored files</param>
+        /// <param name="logger">Optional logger for tracking file operations</param>
+        /// <exception cref="ArgumentNullException">Thrown when encryptionService or compressionService is null</exception>
         public FileOperationService(
             EncryptionService encryptionService,
             CompressionService compressionService,
@@ -26,6 +42,20 @@ namespace SmallBin.Services
             _logger = logger;
         }
 
+        /// <summary>
+        ///     Saves a file to the database with optional tags and content type
+        /// </summary>
+        /// <param name="filePath">The path to the file to save</param>
+        /// <param name="tags">Optional list of tags to associate with the file</param>
+        /// <param name="contentType">The MIME type of the file content (defaults to application/octet-stream)</param>
+        /// <returns>A FileEntry object containing the saved file's metadata and encrypted content</returns>
+        /// <exception cref="ArgumentNullException">Thrown when filePath or contentType is null or empty</exception>
+        /// <exception cref="FileNotFoundException">Thrown when the source file does not exist</exception>
+        /// <exception cref="FileValidationException">Thrown when attempting to save an empty file</exception>
+        /// <remarks>
+        ///     The file content is optionally compressed and always encrypted before storage.
+        ///     Each file gets a unique ID and maintains creation/update timestamps.
+        /// </remarks>
         public FileEntry SaveFile(string filePath, List<string>? tags = null, string contentType = "application/octet-stream")
         {
             if (string.IsNullOrEmpty(filePath))
@@ -73,6 +103,18 @@ namespace SmallBin.Services
             return entry;
         }
 
+        /// <summary>
+        ///     Retrieves a file's content from the database
+        /// </summary>
+        /// <param name="entry">The FileEntry object containing the file's metadata and encrypted content</param>
+        /// <returns>The decrypted and decompressed file content as a byte array</returns>
+        /// <exception cref="ArgumentNullException">Thrown when entry is null</exception>
+        /// <exception cref="DatabaseEncryptionException">Thrown when decryption fails</exception>
+        /// <exception cref="DatabaseCorruptException">Thrown when decompression fails due to corrupted data</exception>
+        /// <remarks>
+        ///     The file content is first decrypted and then decompressed (if compression was used).
+        ///     All operations are logged for security auditing purposes.
+        /// </remarks>
         public byte[] GetFile(FileEntry entry)
         {
             if (entry == null)
@@ -108,6 +150,17 @@ namespace SmallBin.Services
             return decryptedContent;
         }
 
+        /// <summary>
+        ///     Updates the metadata of a file entry
+        /// </summary>
+        /// <param name="entry">The FileEntry object to update</param>
+        /// <param name="updateAction">An action that performs the metadata updates</param>
+        /// <exception cref="ArgumentNullException">Thrown when entry or updateAction is null</exception>
+        /// <exception cref="DatabaseOperationException">Thrown when the update operation fails</exception>
+        /// <remarks>
+        ///     This method automatically updates the UpdatedOn timestamp.
+        ///     The update operation is atomic and logged for security auditing.
+        /// </remarks>
         public void UpdateMetadata(FileEntry entry, Action<FileEntry> updateAction)
         {
             if (entry == null)
