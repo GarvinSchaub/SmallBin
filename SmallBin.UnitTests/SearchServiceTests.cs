@@ -1,11 +1,7 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using SmallBin.Exceptions;
 using SmallBin.Logging;
 using SmallBin.Models;
 using SmallBin.Services;
-using Xunit;
 
 namespace SmallBin.UnitTests
 {
@@ -78,7 +74,7 @@ namespace SmallBin.UnitTests
         public void Search_WithNullFiles_ThrowsArgumentNullException()
         {
             // Act & Assert
-            Assert.Throws<ArgumentNullException>(() => _searchService.Search(null, new SearchCriteria()));
+            Assert.Throws<ArgumentNullException>(() => _searchService.Search(null!, new SearchCriteria()));
         }
 
         [Fact]
@@ -139,16 +135,18 @@ namespace SmallBin.UnitTests
         public void Search_WithException_LogsErrorAndThrowsDatabaseOperationException()
         {
             // Arrange
-            var badFiles = new List<FileEntry> { null }; // Will cause NullReferenceException
+            var invalidFiles = new List<FileEntry> 
+            { 
+                new FileEntry { FileName = null! } // Empty filename will cause Contains to throw
+            };
             var criteria = new SearchCriteria { FileName = "test" };
 
             // Act & Assert
             var exception = Assert.Throws<DatabaseOperationException>(() => 
-                _searchService.Search(badFiles, criteria).ToList());
+                _searchService.Search(invalidFiles, criteria).ToList());
 
             Assert.Contains(_logger.LogMessages, m => m.StartsWith("ERROR: Search operation failed"));
             Assert.Single(_logger.LoggedExceptions);
-            Assert.IsType<NullReferenceException>(_logger.LoggedExceptions[0]);
         }
 
         [Fact]

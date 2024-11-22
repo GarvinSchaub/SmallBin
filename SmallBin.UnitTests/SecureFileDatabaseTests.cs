@@ -1,12 +1,7 @@
-﻿using System;
-using System.IO;
-using System.Text;
-using System.Collections.Generic;
-using System.Linq;
+﻿using System.Text;
 using SmallBin.Core;
 using SmallBin.Models;
 using SmallBin.Exceptions;
-using Xunit;
 
 namespace SmallBin.UnitTests
 {
