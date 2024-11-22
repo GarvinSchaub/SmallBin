@@ -6,6 +6,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using SmallBin.Exceptions;
 using SmallBin.Logging;
 
 namespace SmallBin
@@ -15,16 +16,6 @@ namespace SmallBin
     ///     retrieval, and management of files with support for metadata,
     ///     encryption, and optional compression.
     /// </summary>
-    /// <example>
-    /// To create a new database:
-    /// <code>
-    /// var db = SecureFileDatabase.Create("path/to/db", "password")
-    ///     .WithoutCompression()  // Optional: disable compression
-    ///     .WithAutoSave()        // Optional: enable auto-save
-    ///     .WithConsoleLogging()  // Optional: enable console logging
-    ///     .Build();
-    /// </code>
-    /// </example>
     public class SecureFileDatabase : IDisposable
     {
         private readonly DatabaseContent _database;
@@ -34,22 +25,21 @@ namespace SmallBin
         private readonly bool _useAutoSave;
         private readonly ILogger? _logger;
         private bool _isDirty;
+        private bool _isDisposed;
 
         /// <summary>
         ///     Creates a new DatabaseBuilder instance for configuring and creating a SecureFileDatabase.
         /// </summary>
-        /// <param name="dbPath">The file path where the database will be stored.</param>
-        /// <param name="password">The password used for encrypting the database.</param>
-        /// <returns>A new DatabaseBuilder instance for fluent configuration.</returns>
         public static DatabaseBuilder Create(string dbPath, string password)
         {
+            if (string.IsNullOrEmpty(dbPath))
+                throw new ArgumentNullException(nameof(dbPath), "Database path cannot be null or empty");
+            if (string.IsNullOrEmpty(password))
+                throw new ArgumentNullException(nameof(password), "Password cannot be null or empty");
+
             return new DatabaseBuilder(dbPath, password);
         }
 
-        /// <summary>
-        ///     Internal constructor used by DatabaseBuilder to create a new instance of SecureFileDatabase.
-        ///     To create a new database, use the static Create method instead.
-        /// </summary>
         internal SecureFileDatabase(
             string dbPath, 
             string password, 
@@ -57,11 +47,10 @@ namespace SmallBin
             bool useAutoSave = false,
             ILogger? logger = null)
         {
-            if (string.IsNullOrEmpty(dbPath) || string.IsNullOrWhiteSpace(dbPath))
-                throw new ArgumentNullException(nameof(dbPath));
-
-            if (string.IsNullOrEmpty(password) || string.IsNullOrWhiteSpace(password))
-                throw new ArgumentNullException(nameof(password));
+            if (string.IsNullOrEmpty(dbPath))
+                throw new ArgumentNullException(nameof(dbPath), "Database path cannot be null or empty");
+            if (string.IsNullOrEmpty(password))
+                throw new ArgumentNullException(nameof(password), "Password cannot be null or empty");
 
             _dbPath = dbPath;
             _useCompression = useCompression;
@@ -98,36 +87,42 @@ namespace SmallBin
             }
         }
 
-        /// <summary>
-        ///     Releases all resources used by the SecureFileDatabase.
-        ///     This method should be called when the database is no longer needed,
-        ///     to ensure that any unsaved data is persisted and all resources are freed.
-        /// </summary>
         public void Dispose()
         {
-            if (_isDirty)
-            {
-                _logger?.Debug("Saving changes before disposal");
-                Save();
-            }
+            if (_isDisposed) return;
 
-            _logger?.Debug("Disposing database");
-            _logger?.Dispose();
+            try
+            {
+                if (_isDirty)
+                {
+                    _logger?.Debug("Saving changes before disposal");
+                    Save();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.Error("Error during disposal", ex);
+            }
+            finally
+            {
+                _logger?.Debug("Disposing database");
+                _logger?.Dispose();
+                _isDisposed = true;
+            }
         }
 
         /// <summary>
         ///     Saves a file to the secure database with optional metadata tags and content type.
-        ///     The file is compressed if the compression flag is enabled and always encrypted.
         /// </summary>
-        /// <param name="filePath">The path to the file that needs to be saved.</param>
-        /// <param name="tags">Optional list of tags to associate with the file</param>
-        /// <param name="contentType">Optional MIME type specifying the type of content stored in the file.</param>
-        /// <exception cref="FileNotFoundException">Thrown when the specified file does not exist.</exception>
-#pragma warning disable CS8625 // Cannot convert null literal to non-nullable reference type.
-        public void SaveFile(string filePath, List<string> tags = null,
-#pragma warning restore CS8625 // Cannot convert null literal to non-nullable reference type.
-            string contentType = "application/octet-stream")
+        public void SaveFile(string filePath, List<string>? tags = null, string contentType = "application/octet-stream")
         {
+            ThrowIfDisposed();
+
+            if (string.IsNullOrEmpty(filePath))
+                throw new ArgumentNullException(nameof(filePath), "File path cannot be null or empty");
+            if (string.IsNullOrEmpty(contentType))
+                throw new ArgumentNullException(nameof(contentType), "Content type cannot be null or empty");
+
             if (!File.Exists(filePath))
             {
                 _logger?.Error($"File not found: {filePath}");
@@ -136,6 +131,10 @@ namespace SmallBin
 
             _logger?.Info($"Saving file: {filePath}");
             var fileInfo = new FileInfo(filePath);
+            
+            if (fileInfo.Length == 0)
+                throw new FileValidationException("Cannot save empty file");
+
             var fileContent = File.ReadAllBytes(filePath);
 
             if (_useCompression)
@@ -150,13 +149,18 @@ namespace SmallBin
             aes.GenerateIV();
 
             byte[] encryptedContent;
-            using (var ms = new MemoryStream())
+            try
             {
+                using var ms = new MemoryStream();
                 using var encryptor = aes.CreateEncryptor();
                 using var cs = new CryptoStream(ms, encryptor, CryptoStreamMode.Write);
                 cs.Write(fileContent, 0, fileContent.Length);
                 cs.FlushFinalBlock();
                 encryptedContent = ms.ToArray();
+            }
+            catch (CryptographicException ex)
+            {
+                throw new DatabaseEncryptionException("Failed to encrypt file content", ex);
             }
 
             var entry = new FileEntry
@@ -186,19 +190,20 @@ namespace SmallBin
 
         /// <summary>
         ///     Retrieves the file associated with the specified fileId from the database.
-        ///     Decrypts and optionally decompresses the file content before returning it.
         /// </summary>
-        /// <param name="fileId">The unique identifier of the file to retrieve.</param>
-        /// <returns>A byte array containing the decrypted and decompressed file content.</returns>
-        /// <exception cref="KeyNotFoundException">Thrown when the specified fileId does not exist in the database.</exception>
         public byte[] GetFile(string fileId)
         {
+            ThrowIfDisposed();
+
+            if (string.IsNullOrEmpty(fileId))
+                throw new ArgumentNullException(nameof(fileId), "File ID cannot be null or empty");
+
             _logger?.Debug($"Retrieving file: {fileId}");
 
             if (!_database.Files.TryGetValue(fileId, out var entry))
             {
                 _logger?.Error($"File not found in database: {fileId}");
-                throw new KeyNotFoundException("File not found in database.");
+                throw new KeyNotFoundException($"File with ID '{fileId}' not found in database.");
             }
 
             _logger?.Debug("Decrypting file content");
@@ -207,19 +212,30 @@ namespace SmallBin
             aes.IV = entry.IV;
 
             byte[] decryptedContent;
-            using (var ms = new MemoryStream())
+            try
             {
+                using var ms = new MemoryStream();
                 using var decryptor = aes.CreateDecryptor();
-                using var cs = new CryptoStream(new MemoryStream(entry.EncryptedContent), decryptor,
-                    CryptoStreamMode.Read);
+                using var cs = new CryptoStream(new MemoryStream(entry.EncryptedContent), decryptor, CryptoStreamMode.Read);
                 cs.CopyTo(ms);
                 decryptedContent = ms.ToArray();
+            }
+            catch (CryptographicException ex)
+            {
+                throw new DatabaseEncryptionException($"Failed to decrypt file: {entry.FileName}", ex);
             }
 
             if (entry.IsCompressed)
             {
                 _logger?.Debug("Decompressing file content");
-                decryptedContent = Decompress(decryptedContent);
+                try
+                {
+                    decryptedContent = Decompress(decryptedContent);
+                }
+                catch (InvalidDataException ex)
+                {
+                    throw new DatabaseCorruptException($"Failed to decompress file: {entry.FileName}", ex);
+                }
             }
 
             _logger?.Info($"File retrieved successfully: {entry.FileName}");
@@ -228,110 +244,114 @@ namespace SmallBin
 
         private static byte[] Compress(byte[] data)
         {
+            if (data == null || data.Length == 0)
+                throw new ArgumentException("Cannot compress null or empty data", nameof(data));
+
             using var compressedStream = new MemoryStream();
             using (var gzipStream = new GZipStream(compressedStream, CompressionLevel.Optimal))
             {
                 gzipStream.Write(data, 0, data.Length);
             }
-
             return compressedStream.ToArray();
         }
 
         private static byte[] Decompress(byte[] compressedData)
         {
+            if (compressedData == null || compressedData.Length == 0)
+                throw new ArgumentException("Cannot decompress null or empty data", nameof(compressedData));
+
             using var compressedStream = new MemoryStream(compressedData);
             using var decompressedStream = new MemoryStream();
             using (var gzipStream = new GZipStream(compressedStream, CompressionMode.Decompress))
             {
                 gzipStream.CopyTo(decompressedStream);
             }
-
             return decompressedStream.ToArray();
         }
 
         private void LoadDatabase()
         {
+            var fileContent = File.ReadAllBytes(_dbPath);
+            if (fileContent.Length < 16)
+            {
+                _logger?.Error("Database file is corrupt or invalid (file too small)");
+                throw new DatabaseCorruptException("Database file is corrupt or invalid (file too small)");
+            }
+
+            var iv = new byte[16];
+            Array.Copy(fileContent, 0, iv, 0, 16);
+
+            var encryptedContent = new byte[fileContent.Length - 16];
+            Array.Copy(fileContent, 16, encryptedContent, 0, encryptedContent.Length);
+
+            string json;
             try
             {
-                var fileContent = File.ReadAllBytes(_dbPath);
-                if (fileContent.Length < 16)
-                {
-                    _logger?.Error("Database file is corrupt or invalid (file too small)");
-                    throw new InvalidOperationException("Database file is corrupt or invalid");
-                }
-
-                var iv = new byte[16];
-                Array.Copy(fileContent, 0, iv, 0, 16);
-
-                var encryptedContent = new byte[fileContent.Length - 16];
-                Array.Copy(fileContent, 16, encryptedContent, 0, encryptedContent.Length);
-
                 using var aes = Aes.Create();
                 aes.Key = _key;
                 aes.IV = iv;
 
-                string json;
-                using (new MemoryStream())
-                {
-                    using var decryptor = aes.CreateDecryptor();
-                    using var cs = new CryptoStream(new MemoryStream(encryptedContent), decryptor, CryptoStreamMode.Read);
-                    using var reader = new StreamReader(cs);
-                    json = reader.ReadToEnd();
-                }
-
-                var loadedDb = JsonSerializer.Deserialize<DatabaseContent>(json);
-                if (loadedDb == null)
-                {
-                    _logger?.Warning("Loaded database content is null");
-                    return;
-                }
-
-                _database.Files.Clear();
-                foreach (var entry in loadedDb.Files)
-                    _database.Files[entry.Key] = entry.Value;
-
-                _database.Version = loadedDb.Version;
-                _logger?.Info($"Database loaded successfully. Files: {_database.Files.Count}");
+                using var ms = new MemoryStream();
+                using var decryptor = aes.CreateDecryptor();
+                using var cs = new CryptoStream(new MemoryStream(encryptedContent), decryptor, CryptoStreamMode.Read);
+                using var reader = new StreamReader(cs);
+                json = reader.ReadToEnd();
             }
-            catch (Exception ex)
+            catch (CryptographicException ex)
             {
-                _logger?.Error("Failed to load database", ex);
-                throw;
+                throw new DatabaseEncryptionException("Failed to decrypt database content", ex);
             }
+
+            var loadedDb = JsonSerializer.Deserialize<DatabaseContent>(json);
+            if (loadedDb == null)
+            {
+                _logger?.Error("Database deserialization failed");
+                throw new DatabaseCorruptException("Failed to deserialize database content");
+            }
+
+            _database.Files.Clear();
+            foreach (var entry in loadedDb.Files)
+                _database.Files[entry.Key] = entry.Value;
+
+            _database.Version = loadedDb.Version;
+            _logger?.Info($"Database loaded successfully. Files: {_database.Files.Count}");
         }
 
         /// <summary>
         ///     Deletes a file from the database by its unique identifier.
         /// </summary>
-        /// <param name="fileId">The unique identifier of the file to be deleted.</param>
-        /// <exception cref="KeyNotFoundException">Thrown when the specified fileId does not exist in the database.</exception>
         public void DeleteFile(string fileId)
         {
+            ThrowIfDisposed();
+
+            if (string.IsNullOrEmpty(fileId))
+                throw new ArgumentNullException(nameof(fileId), "File ID cannot be null or empty");
+
             _logger?.Debug($"Deleting file: {fileId}");
 
             if (!_database.Files.ContainsKey(fileId))
             {
                 _logger?.Error($"File not found in database: {fileId}");
-                throw new KeyNotFoundException("File not found in database.");
+                throw new KeyNotFoundException($"File with ID '{fileId}' not found in database.");
             }
 
             _database.Files.Remove(fileId);
             _isDirty = true;
             _logger?.Info($"File deleted successfully: {fileId}");
+
+            if (_useAutoSave)
+            {
+                Save();
+            }
         }
 
         /// <summary>
         ///     Persists the current state of the database to disk if there are changes.
         /// </summary>
-        /// <remarks>
-        ///     This method serializes the in-memory database content to a temporary file,
-        ///     encrypts it, and then replaces the original database file with the new one.
-        ///     A backup of the previous version is maintained until the next save operation.
-        /// </remarks>
-        /// <exception cref="InvalidOperationException">Thrown if the database content is not written correctly.</exception>
-        /// <exception cref="IOException">Thrown if there are errors during file operations.</exception>
         public void Save()
         {
+            ThrowIfDisposed();
+
             if (!_isDirty)
             {
                 _logger?.Debug("No changes to save");
@@ -345,38 +365,34 @@ namespace SmallBin
 
             try
             {
-                // Create new content in temporary file
-                var jsonOptions = new JsonSerializerOptions {WriteIndented = true};
+                var jsonOptions = new JsonSerializerOptions { WriteIndented = true };
                 var json = JsonSerializer.Serialize(_database, jsonOptions);
                 var jsonBytes = Encoding.UTF8.GetBytes(json);
 
                 _logger?.Debug("Writing encrypted content to temporary file");
-                using (var aes = Aes.Create())
+                using var aes = Aes.Create();
+                aes.Key = _key;
+                aes.GenerateIV();
+
+                using (var fs = File.Create(tempPath))
                 {
-                    aes.Key = _key;
-                    aes.GenerateIV();
+                    fs.Write(aes.IV, 0, aes.IV.Length);
 
-                    using (var fs = File.Create(tempPath))
-                    {
-                        fs.Write(aes.IV, 0, aes.IV.Length);
-
-                        using var encryptor = aes.CreateEncryptor();
-                        using var cs = new CryptoStream(fs, encryptor, CryptoStreamMode.Write);
-                        cs.Write(jsonBytes, 0, jsonBytes.Length);
-                    }
+                    using var encryptor = aes.CreateEncryptor();
+                    using var cs = new CryptoStream(fs, encryptor, CryptoStreamMode.Write);
+                    cs.Write(jsonBytes, 0, jsonBytes.Length);
                 }
 
                 if (new FileInfo(tempPath).Length <= 16)
                 {
                     _logger?.Error("Failed to write database content (file too small)");
-                    throw new InvalidOperationException("Failed to write database content");
+                    throw new InvalidDatabaseStateException("Failed to write database content (file too small)");
                 }
 
                 // Backup existing file if it exists
                 if (File.Exists(_dbPath))
                 {
                     _logger?.Debug("Creating backup of existing database");
-                    // Remove old backup if it exists
                     if (File.Exists(backupPath))
                     {
                         if (File.Exists(oldBackupPath))
@@ -402,9 +418,16 @@ namespace SmallBin
                 if (File.Exists(backupPath) && !File.Exists(_dbPath))
                 {
                     _logger?.Warning("Attempting to restore from backup");
-                    File.Copy(backupPath, _dbPath);
+                    try
+                    {
+                        File.Copy(backupPath, _dbPath);
+                    }
+                    catch (Exception restoreEx)
+                    {
+                        throw new DatabaseOperationException("Failed to save database and restore from backup", 
+                            new AggregateException(ex, restoreEx));
+                    }
                 }
-
                 throw;
             }
             finally
@@ -412,15 +435,29 @@ namespace SmallBin
                 // Clean up temporary file
                 if (File.Exists(tempPath))
                 {
-                    File.Delete(tempPath);
-                    _logger?.Debug("Cleaned up temporary file");
+                    try
+                    {
+                        File.Delete(tempPath);
+                        _logger?.Debug("Cleaned up temporary file");
+                    }
+                    catch (Exception)
+                    {
+                        _logger?.Warning("Failed to clean up temporary file");
+                    }
                 }
                 
                 // Clean up old backup
                 if (File.Exists(oldBackupPath))
                 {
-                    File.Delete(oldBackupPath);
-                    _logger?.Debug("Cleaned up old backup file");
+                    try
+                    {
+                        File.Delete(oldBackupPath);
+                        _logger?.Debug("Cleaned up old backup file");
+                    }
+                    catch (Exception)
+                    {
+                        _logger?.Warning("Failed to clean up old backup file");
+                    }
                 }
             }
         }
@@ -428,42 +465,76 @@ namespace SmallBin
         /// <summary>
         ///     Updates the metadata of a file entry in the secure database.
         /// </summary>
-        /// <param name="fileId">The unique identifier of the file whose metadata is to be updated.</param>
-        /// <param name="updateAction">An action that encapsulates the updates to be made to the file entry.</param>
-        /// <exception cref="KeyNotFoundException">Thrown when the specified fileId does not exist in the database.</exception>
         public void UpdateMetadata(string fileId, Action<FileEntry> updateAction)
         {
+            ThrowIfDisposed();
+
+            if (string.IsNullOrEmpty(fileId))
+                throw new ArgumentNullException(nameof(fileId), "File ID cannot be null or empty");
+            if (updateAction == null)
+                throw new ArgumentNullException(nameof(updateAction), "Update action cannot be null");
+
             _logger?.Debug($"Updating metadata for file: {fileId}");
 
             if (!_database.Files.TryGetValue(fileId, out var entry))
             {
                 _logger?.Error($"File not found in database: {fileId}");
-                throw new KeyNotFoundException("File not found in database.");
+                throw new KeyNotFoundException($"File with ID '{fileId}' not found in database.");
             }
 
-            updateAction(entry);
-            entry.UpdatedOn = DateTime.UtcNow;
-            _isDirty = true;
-            _logger?.Info($"Metadata updated successfully for file: {fileId}");
+            try
+            {
+                updateAction(entry);
+                entry.UpdatedOn = DateTime.UtcNow;
+                _isDirty = true;
+                _logger?.Info($"Metadata updated successfully for file: {fileId}");
+
+                if (_useAutoSave)
+                {
+                    Save();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.Error($"Failed to update metadata for file: {fileId}", ex);
+                throw new DatabaseOperationException($"Failed to update metadata for file: {fileId}", ex);
+            }
         }
 
         /// <summary>
         ///     Searches for files in the database based on the provided search criteria.
         /// </summary>
-        /// <param name="criteria">The criteria used to filter the search results.</param>
-        /// <returns>A collection of <c>FileEntry</c> objects that match the specified search criteria.</returns>
-        public IEnumerable<FileEntry> Search(SearchCriteria criteria)
+        public IEnumerable<FileEntry> Search(SearchCriteria? criteria)
         {
+            ThrowIfDisposed();
+
             _logger?.Debug($"Searching files with criteria: {criteria?.FileName ?? "all"}");
 
-            var query = _database.Files.Values.AsEnumerable();
+            try
+            {
+                var query = _database.Files.Values.AsEnumerable();
 
-            if (!string.IsNullOrWhiteSpace(criteria?.FileName))
-                query = query.Where(e => e.FileName.Contains(criteria?.FileName, StringComparison.OrdinalIgnoreCase));
+                if (!string.IsNullOrWhiteSpace(criteria?.FileName))
+                    query = query.Where(e => e.FileName.Contains(criteria.FileName, StringComparison.OrdinalIgnoreCase));
 
-            var results = query.ToList();
-            _logger?.Info($"Search completed. Found {results.Count} matches");
-            return results;
+                var results = query.ToList();
+                _logger?.Info($"Search completed. Found {results.Count} matches");
+                return results;
+            }
+            catch (Exception ex)
+            {
+                _logger?.Error("Search operation failed", ex);
+                throw new DatabaseOperationException("Search operation failed", ex);
+            }
+        }
+
+        private void ThrowIfDisposed()
+        {
+            if (_isDisposed)
+            {
+                throw new ObjectDisposedException(nameof(SecureFileDatabase), 
+                    "Cannot perform operations on a disposed database");
+            }
         }
     }
 }

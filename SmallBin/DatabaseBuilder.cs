@@ -1,11 +1,12 @@
 using System;
+using System.IO;
+using SmallBin.Exceptions;
 using SmallBin.Logging;
 
 namespace SmallBin
 {
     /// <summary>
     /// Builder class for creating instances of SecureFileDatabase with configurable options.
-    /// This provides a fluent interface for setting up database configuration.
     /// </summary>
     public class DatabaseBuilder
     {
@@ -15,19 +16,70 @@ namespace SmallBin
         private bool _useAutoSave;
         private ILogger? _logger;
 
+        private const int MinPasswordLength = 8;
+        private const long DefaultMaxLogSize = 10 * 1024 * 1024; // 10MB
+
         /// <summary>
         /// Initializes a new instance of the DatabaseBuilder with required parameters.
         /// </summary>
-        /// <param name="dbPath">The file path where the database will be stored.</param>
-        /// <param name="password">The password used for encrypting the database.</param>
-        /// <exception cref="ArgumentNullException">Thrown when dbPath or password is null or empty.</exception>
         public DatabaseBuilder(string dbPath, string password)
         {
-            if (string.IsNullOrEmpty(dbPath) || string.IsNullOrWhiteSpace(dbPath))
+            // Check for null or empty strings first
+            if (dbPath == null)
                 throw new ArgumentNullException(nameof(dbPath));
-
-            if (string.IsNullOrEmpty(password) || string.IsNullOrWhiteSpace(password))
+            if (password == null)
                 throw new ArgumentNullException(nameof(password));
+
+            // Then check for whitespace
+            if (string.IsNullOrWhiteSpace(dbPath))
+                throw new ArgumentNullException(nameof(dbPath), "Database path cannot be empty or whitespace");
+            if (string.IsNullOrWhiteSpace(password))
+                throw new ArgumentNullException(nameof(password), "Password cannot be empty or whitespace");
+            
+            // Password length check is separate from null/empty validation
+            if (password.Length < MinPasswordLength)
+                throw new ArgumentException($"Password must be at least {MinPasswordLength} characters long", nameof(password));
+
+            try
+            {
+                // Validate and normalize the path
+                dbPath = Path.GetFullPath(dbPath);
+                
+                // Check if the directory exists or can be created
+                var directory = Path.GetDirectoryName(dbPath);
+                if (!string.IsNullOrEmpty(directory))
+                {
+                    if (!Directory.Exists(directory))
+                    {
+                        Directory.CreateDirectory(directory);
+                    }
+
+                    // Verify write permissions by attempting to create a temporary file
+                    var testFile = Path.Combine(directory, $"test_{Guid.NewGuid()}.tmp");
+                    try
+                    {
+                        File.WriteAllText(testFile, string.Empty);
+                        File.Delete(testFile);
+                    }
+                    catch (Exception ex)
+                    {
+                        if (ex is UnauthorizedAccessException || ex is IOException)
+                        {
+                            throw new DatabaseOperationException(
+                                $"Directory is not writable: {directory}", ex);
+                        }
+                        throw;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                if (ex is DatabaseOperationException)
+                    throw;
+                    
+                throw new DatabaseOperationException(
+                    $"Invalid database path: {dbPath}", ex);
+            }
 
             _dbPath = dbPath;
             _password = password;
@@ -36,7 +88,6 @@ namespace SmallBin
         /// <summary>
         /// Disables compression for stored files. By default, compression is enabled.
         /// </summary>
-        /// <returns>The current DatabaseBuilder instance for method chaining.</returns>
         public DatabaseBuilder WithoutCompression()
         {
             _useCompression = false;
@@ -46,7 +97,6 @@ namespace SmallBin
         /// <summary>
         /// Enables automatic saving of changes. By default, auto-save is disabled.
         /// </summary>
-        /// <returns>The current DatabaseBuilder instance for method chaining.</returns>
         public DatabaseBuilder WithAutoSave()
         {
             _useAutoSave = true;
@@ -56,50 +106,105 @@ namespace SmallBin
         /// <summary>
         /// Sets a custom logger implementation for the database.
         /// </summary>
-        /// <param name="logger">The logger implementation to use.</param>
-        /// <returns>The current DatabaseBuilder instance for method chaining.</returns>
-        /// <exception cref="ArgumentNullException">Thrown when logger is null.</exception>
         public DatabaseBuilder WithLogger(ILogger logger)
         {
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger), "Logger cannot be null");
             return this;
         }
 
         /// <summary>
         /// Enables console logging with optional timestamp inclusion.
         /// </summary>
-        /// <param name="includeTimestamp">Whether to include timestamps in log messages. Default is true.</param>
-        /// <returns>The current DatabaseBuilder instance for method chaining.</returns>
         public DatabaseBuilder WithConsoleLogging(bool includeTimestamp = true)
         {
-            _logger = new ConsoleLogger(includeTimestamp);
-            return this;
+            try
+            {
+                _logger = new ConsoleLogger(includeTimestamp);
+                return this;
+            }
+            catch (Exception ex)
+            {
+                throw new DatabaseOperationException("Failed to initialize console logger", ex);
+            }
         }
 
         /// <summary>
         /// Enables file logging with configurable options.
         /// </summary>
-        /// <param name="logFilePath">The path where log files will be written. If null, uses [dbPath].log</param>
-        /// <param name="includeTimestamp">Whether to include timestamps in log messages. Default is true.</param>
-        /// <param name="maxFileSizeBytes">Maximum size of log file before rotation. Default is 10MB. Use 0 to disable rotation.</param>
-        /// <returns>The current DatabaseBuilder instance for method chaining.</returns>
         public DatabaseBuilder WithFileLogging(
             string? logFilePath = null,
             bool includeTimestamp = true,
-            long maxFileSizeBytes = 10 * 1024 * 1024)
+            long maxFileSizeBytes = DefaultMaxLogSize)
         {
-            var path = logFilePath ?? $"{_dbPath}.log";
-            _logger = new FileLogger(path, includeTimestamp, maxFileSizeBytes);
-            return this;
+            try
+            {
+                var path = logFilePath ?? $"{_dbPath}.log";
+
+                // Validate and normalize the log file path
+                path = Path.GetFullPath(path);
+                
+                // Validate max file size
+                if (maxFileSizeBytes < 0)
+                    throw new ArgumentException("Max file size cannot be negative", nameof(maxFileSizeBytes));
+
+                // Check if the directory exists or can be created
+                var directory = Path.GetDirectoryName(path);
+                if (!string.IsNullOrEmpty(directory))
+                {
+                    if (!Directory.Exists(directory))
+                    {
+                        Directory.CreateDirectory(directory);
+                    }
+
+                    // Verify write permissions
+                    var testFile = Path.Combine(directory, $"test_{Guid.NewGuid()}.tmp");
+                    try
+                    {
+                        File.WriteAllText(testFile, string.Empty);
+                        File.Delete(testFile);
+                    }
+                    catch (Exception ex)
+                    {
+                        if (ex is UnauthorizedAccessException || ex is IOException)
+                        {
+                            throw new DatabaseOperationException(
+                                $"Log directory is not writable: {directory}", ex);
+                        }
+                        throw;
+                    }
+                }
+
+                _logger = new FileLogger(path, includeTimestamp, maxFileSizeBytes);
+                return this;
+            }
+            catch (Exception ex)
+            {
+                if (ex is DatabaseOperationException)
+                    throw;
+                    
+                throw new DatabaseOperationException("Failed to initialize file logger", ex);
+            }
         }
 
         /// <summary>
         /// Builds and returns a new instance of SecureFileDatabase with the configured options.
         /// </summary>
-        /// <returns>A new instance of SecureFileDatabase.</returns>
         public SecureFileDatabase Build()
         {
-            return new SecureFileDatabase(_dbPath, _password, _useCompression, _useAutoSave, _logger);
+            try
+            {
+                return new SecureFileDatabase(_dbPath, _password, _useCompression, _useAutoSave, _logger);
+            }
+            catch (Exception ex)
+            {
+                if (ex is DatabaseOperationException || 
+                    ex is DatabaseEncryptionException || 
+                    ex is DatabaseCorruptException)
+                {
+                    throw;
+                }
+                throw new DatabaseOperationException("Failed to build database", ex);
+            }
         }
     }
 }
