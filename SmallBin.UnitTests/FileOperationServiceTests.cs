@@ -16,6 +16,7 @@ namespace SmallBin.UnitTests
         private readonly EncryptionService _encryptionService;
         private readonly CompressionService _compressionService;
         private readonly ChecksumService _checksumService;
+        private readonly CacheService _cacheService;
         private readonly FileOperationService _fileOperationService;
         private readonly byte[] _testKey;
 
@@ -36,7 +37,14 @@ namespace SmallBin.UnitTests
             _encryptionService = new EncryptionService(_testKey);
             _compressionService = new CompressionService();
             _checksumService = new ChecksumService();
-            _fileOperationService = new FileOperationService(_encryptionService, _compressionService, _checksumService, true, _logger);
+            _cacheService = new CacheService(logger: _logger);
+            _fileOperationService = new FileOperationService(
+                _encryptionService, 
+                _compressionService, 
+                _checksumService,
+                _cacheService,
+                useCompression: true,
+                logger: _logger);
         }
 
         public void Dispose()
@@ -72,21 +80,28 @@ namespace SmallBin.UnitTests
         public void Constructor_WithNullEncryptionService_ThrowsArgumentNullException()
         {
             Assert.Throws<ArgumentNullException>(() => 
-                new FileOperationService(null, _compressionService, _checksumService));
+                new FileOperationService(null, _compressionService, _checksumService, _cacheService));
         }
 
         [Fact]
         public void Constructor_WithNullCompressionService_ThrowsArgumentNullException()
         {
             Assert.Throws<ArgumentNullException>(() => 
-                new FileOperationService(_encryptionService, null, _checksumService));
+                new FileOperationService(_encryptionService, null, _checksumService, _cacheService));
         }
 
         [Fact]
         public void Constructor_WithNullChecksumService_ThrowsArgumentNullException()
         {
             Assert.Throws<ArgumentNullException>(() => 
-                new FileOperationService(_encryptionService, _compressionService, null));
+                new FileOperationService(_encryptionService, _compressionService, null, _cacheService));
+        }
+
+        [Fact]
+        public void Constructor_WithNullCacheService_ThrowsArgumentNullException()
+        {
+            Assert.Throws<ArgumentNullException>(() => 
+                new FileOperationService(_encryptionService, _compressionService, _checksumService, null));
         }
 
         [Fact]
@@ -151,6 +166,27 @@ namespace SmallBin.UnitTests
         }
 
         [Fact]
+        public void GetFile_WithCachedContent_ReturnsCachedVersion()
+        {
+            // Arrange
+            var entry = _fileOperationService.SaveFile(_testFilePath);
+            
+            // First get to cache the content
+            var firstContent = _fileOperationService.GetFile(entry);
+            
+            // Clear log messages to verify cache hit
+            _logger.LogMessages.Clear();
+
+            // Act
+            var secondContent = _fileOperationService.GetFile(entry);
+
+            // Assert
+            Assert.Equal(firstContent, secondContent);
+            Assert.Contains(_logger.LogMessages, m => m.StartsWith("DEBUG: Cache hit"));
+            Assert.DoesNotContain(_logger.LogMessages, m => m.StartsWith("DEBUG: Decrypting file content"));
+        }
+
+        [Fact]
         public void GetDuplicates_WithOriginalFile_ReturnsAllDuplicates()
         {
             // Arrange
@@ -189,7 +225,13 @@ namespace SmallBin.UnitTests
         public void SaveFile_WithoutCompression_CreatesUncompressedFileEntry()
         {
             // Arrange
-            var service = new FileOperationService(_encryptionService, _compressionService, _checksumService, false, _logger);
+            var service = new FileOperationService(
+                _encryptionService, 
+                _compressionService, 
+                _checksumService,
+                _cacheService,
+                useCompression: false,
+                logger: _logger);
 
             // Act
             var entry = service.SaveFile(_testFilePath);

@@ -21,6 +21,7 @@ namespace SmallBin.Services
         private readonly EncryptionService _encryptionService;
         private readonly CompressionService _compressionService;
         private readonly ChecksumService _checksumService;
+        private readonly CacheService _cacheService;
         private readonly bool _useCompression;
         private readonly ILogger? _logger;
         private readonly Dictionary<string, FileEntry> _fileEntries;
@@ -31,6 +32,7 @@ namespace SmallBin.Services
         /// <param name="encryptionService">The service used for encrypting and decrypting file content</param>
         /// <param name="compressionService">The service used for compressing and decompressing file content</param>
         /// <param name="checksumService">The service used for calculating and verifying file checksums</param>
+        /// <param name="cacheService">The service used for caching frequently accessed files</param>
         /// <param name="useCompression">Whether to use compression for stored files</param>
         /// <param name="logger">Optional logger for tracking file operations</param>
         /// <exception cref="ArgumentNullException">Thrown when required services are null</exception>
@@ -38,12 +40,14 @@ namespace SmallBin.Services
             EncryptionService encryptionService,
             CompressionService compressionService,
             ChecksumService checksumService,
+            CacheService cacheService,
             bool useCompression = true,
             ILogger? logger = null)
         {
             _encryptionService = encryptionService ?? throw new ArgumentNullException(nameof(encryptionService));
             _compressionService = compressionService ?? throw new ArgumentNullException(nameof(compressionService));
             _checksumService = checksumService ?? throw new ArgumentNullException(nameof(checksumService));
+            _cacheService = cacheService ?? throw new ArgumentNullException(nameof(cacheService));
             _useCompression = useCompression;
             _logger = logger;
             _fileEntries = new Dictionary<string, FileEntry>();
@@ -170,6 +174,10 @@ namespace SmallBin.Services
 
             _fileEntries[entry.Id] = entry;
             _logger?.Info($"File saved successfully. ID: {entry.Id}");
+
+            // Cache the original uncompressed content
+            _cacheService.AddToCache(entry.Id, File.ReadAllBytes(filePath));
+
             return entry;
         }
 
@@ -195,10 +203,18 @@ namespace SmallBin.Services
             _logger?.Debug($"Retrieving file: {entry.FileName}");
 
             // If this is a duplicate, get the original entry
-            if (entry.IsDuplicate && _fileEntries.TryGetValue(entry.OriginalFileId!, out var originalEntry))
+            string fileId = entry.IsDuplicate ? entry.OriginalFileId! : entry.Id;
+            if (entry.IsDuplicate && _fileEntries.TryGetValue(fileId, out var originalEntry))
             {
-                _logger?.Debug($"Using content from original file: {originalEntry.Id}");
                 entry = originalEntry;
+            }
+
+            // Try to get the file from cache first
+            var cachedContent = _cacheService.TryGetFromCache(fileId);
+            if (cachedContent != null)
+            {
+                _logger?.Debug($"Retrieved file from cache: {entry.FileName}");
+                return cachedContent;
             }
 
             byte[] decryptedContent;
@@ -232,6 +248,9 @@ namespace SmallBin.Services
                 _logger?.Error($"Checksum verification failed for file: {entry.FileName}");
                 throw new DatabaseCorruptException($"File integrity verification failed: {entry.FileName}");
             }
+
+            // Cache the decrypted and decompressed content
+            _cacheService.AddToCache(fileId, decryptedContent);
 
             _logger?.Info($"File retrieved successfully: {entry.FileName}");
             return decryptedContent;
