@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using SmallBin.Exceptions;
 using SmallBin.Logging;
 using SmallBin.Models;
@@ -22,6 +23,7 @@ namespace SmallBin.Services
         private readonly ChecksumService _checksumService;
         private readonly bool _useCompression;
         private readonly ILogger? _logger;
+        private readonly Dictionary<string, FileEntry> _fileEntries;
 
         /// <summary>
         ///     Initializes a new instance of the FileOperationService class
@@ -44,6 +46,53 @@ namespace SmallBin.Services
             _checksumService = checksumService ?? throw new ArgumentNullException(nameof(checksumService));
             _useCompression = useCompression;
             _logger = logger;
+            _fileEntries = new Dictionary<string, FileEntry>();
+        }
+
+        /// <summary>
+        ///     Finds a duplicate file entry based on the checksum
+        /// </summary>
+        /// <param name="checksum">The checksum to search for</param>
+        /// <returns>The original file entry if found, null otherwise</returns>
+        private FileEntry? FindDuplicateByChecksum(string checksum)
+        {
+            return _fileEntries.Values
+                .FirstOrDefault(entry => entry.Checksum == checksum && entry.OriginalFileId == null);
+        }
+
+        /// <summary>
+        ///     Creates a duplicate file entry that references the original file
+        /// </summary>
+        /// <param name="originalEntry">The original file entry</param>
+        /// <param name="filePath">The path of the duplicate file</param>
+        /// <param name="tags">Optional tags for the duplicate entry</param>
+        /// <param name="contentType">The content type of the duplicate file</param>
+        /// <returns>A new FileEntry that references the original file</returns>
+        private FileEntry CreateDuplicateEntry(FileEntry originalEntry, string filePath, List<string>? tags, string contentType)
+        {
+            var duplicateEntry = new FileEntry
+            {
+                FileName = Path.GetFileName(filePath),
+                Tags = tags ?? new List<string>(),
+                CreatedOn = DateTime.UtcNow,
+                UpdatedOn = DateTime.UtcNow,
+                FileSize = originalEntry.FileSize,
+                ContentType = contentType,
+                IsCompressed = originalEntry.IsCompressed,
+                Checksum = originalEntry.Checksum,
+                ChecksumAlgorithm = originalEntry.ChecksumAlgorithm,
+                OriginalFileId = originalEntry.Id,
+                // Reference the same encrypted content and IV from the original
+                EncryptedContent = originalEntry.EncryptedContent,
+                IV = originalEntry.IV
+            };
+
+            // Add this duplicate to the original's list of duplicates
+            originalEntry.DuplicateFileIds.Add(duplicateEntry.Id);
+            _fileEntries[duplicateEntry.Id] = duplicateEntry;
+
+            _logger?.Info($"Created duplicate entry {duplicateEntry.Id} referencing original file {originalEntry.Id}");
+            return duplicateEntry;
         }
 
         /// <summary>
@@ -60,6 +109,7 @@ namespace SmallBin.Services
         ///     The file content is optionally compressed and always encrypted before storage.
         ///     A checksum is calculated on the original content for integrity verification.
         ///     Each file gets a unique ID and maintains creation/update timestamps.
+        ///     If a duplicate file is detected, a new entry referencing the original file is created.
         /// </remarks>
         public FileEntry SaveFile(string filePath, List<string>? tags = null, string contentType = "application/octet-stream")
         {
@@ -86,6 +136,14 @@ namespace SmallBin.Services
             _logger?.Debug("Calculating file checksum");
             string checksum = _checksumService.CalculateChecksum(fileContent);
 
+            // Check for duplicates
+            var existingFile = FindDuplicateByChecksum(checksum);
+            if (existingFile != null)
+            {
+                _logger?.Info($"Found duplicate file. Creating reference to original file {existingFile.Id}");
+                return CreateDuplicateEntry(existingFile, filePath, tags, contentType);
+            }
+
             if (_useCompression)
             {
                 _logger?.Debug("Compressing file content");
@@ -110,6 +168,7 @@ namespace SmallBin.Services
                 ChecksumAlgorithm = "SHA256" // Using SHA256 as the default algorithm
             };
 
+            _fileEntries[entry.Id] = entry;
             _logger?.Info($"File saved successfully. ID: {entry.Id}");
             return entry;
         }
@@ -126,6 +185,7 @@ namespace SmallBin.Services
         ///     The file content is first decrypted and then decompressed (if compression was used).
         ///     The file's integrity is verified using its stored checksum.
         ///     All operations are logged for security auditing purposes.
+        ///     For duplicate files, the content is retrieved from the original file entry.
         /// </remarks>
         public byte[] GetFile(FileEntry entry)
         {
@@ -133,6 +193,13 @@ namespace SmallBin.Services
                 throw new ArgumentNullException(nameof(entry));
 
             _logger?.Debug($"Retrieving file: {entry.FileName}");
+
+            // If this is a duplicate, get the original entry
+            if (entry.IsDuplicate && _fileEntries.TryGetValue(entry.OriginalFileId!, out var originalEntry))
+            {
+                _logger?.Debug($"Using content from original file: {originalEntry.Id}");
+                entry = originalEntry;
+            }
 
             byte[] decryptedContent;
             try
@@ -201,6 +268,29 @@ namespace SmallBin.Services
                 _logger?.Error($"Failed to update metadata for file: {entry.FileName}", ex);
                 throw new DatabaseOperationException($"Failed to update metadata for file: {entry.FileName}", ex);
             }
+        }
+
+        /// <summary>
+        ///     Gets all duplicate entries for a given file
+        /// </summary>
+        /// <param name="entry">The FileEntry to find duplicates for</param>
+        /// <returns>A list of FileEntry objects that are duplicates of the given file</returns>
+        /// <exception cref="ArgumentNullException">Thrown when entry is null</exception>
+        public List<FileEntry> GetDuplicates(FileEntry entry)
+        {
+            if (entry == null)
+                throw new ArgumentNullException(nameof(entry));
+
+            // If this is a duplicate, get duplicates from the original
+            if (entry.IsDuplicate && _fileEntries.TryGetValue(entry.OriginalFileId!, out var originalEntry))
+            {
+                entry = originalEntry;
+            }
+
+            return entry.DuplicateFileIds
+                .Where(id => _fileEntries.ContainsKey(id))
+                .Select(id => _fileEntries[id])
+                .ToList();
         }
     }
 }

@@ -11,6 +11,7 @@ namespace SmallBin.UnitTests
     public class FileOperationServiceTests : IDisposable
     {
         private readonly string _testFilePath;
+        private readonly string _duplicateFilePath;
         private readonly TestLogger _logger;
         private readonly EncryptionService _encryptionService;
         private readonly CompressionService _compressionService;
@@ -23,6 +24,10 @@ namespace SmallBin.UnitTests
             // Create a temporary test file
             _testFilePath = Path.GetTempFileName();
             File.WriteAllText(_testFilePath, "Test file content");
+
+            // Create a duplicate test file
+            _duplicateFilePath = Path.GetTempFileName();
+            File.WriteAllText(_duplicateFilePath, "Test file content"); // Same content as _testFilePath
 
             // Setup services
             _logger = new TestLogger();
@@ -39,6 +44,10 @@ namespace SmallBin.UnitTests
             if (File.Exists(_testFilePath))
             {
                 File.Delete(_testFilePath);
+            }
+            if (File.Exists(_duplicateFilePath))
+            {
+                File.Delete(_duplicateFilePath);
             }
         }
 
@@ -104,6 +113,76 @@ namespace SmallBin.UnitTests
             Assert.Equal("SHA256", entry.ChecksumAlgorithm);
             Assert.Contains(_logger.LogMessages, m => m.StartsWith("INFO: Saving file:"));
             Assert.Contains(_logger.LogMessages, m => m.StartsWith("DEBUG: Calculating file checksum"));
+        }
+
+        [Fact]
+        public void SaveFile_WithDuplicateContent_CreatesDuplicateEntry()
+        {
+            // Arrange
+            var originalEntry = _fileOperationService.SaveFile(_testFilePath);
+
+            // Act
+            var duplicateEntry = _fileOperationService.SaveFile(_duplicateFilePath);
+
+            // Assert
+            Assert.True(duplicateEntry.IsDuplicate);
+            Assert.Equal(originalEntry.Id, duplicateEntry.OriginalFileId);
+            Assert.Equal(originalEntry.Checksum, duplicateEntry.Checksum);
+            Assert.Equal(originalEntry.EncryptedContent, duplicateEntry.EncryptedContent);
+            Assert.Equal(originalEntry.IV, duplicateEntry.IV);
+            Assert.Contains(duplicateEntry.Id, originalEntry.DuplicateFileIds);
+            Assert.Contains(_logger.LogMessages, m => m.StartsWith("INFO: Found duplicate file"));
+        }
+
+        [Fact]
+        public void GetFile_WithDuplicateEntry_ReturnsOriginalContent()
+        {
+            // Arrange
+            var originalEntry = _fileOperationService.SaveFile(_testFilePath);
+            var duplicateEntry = _fileOperationService.SaveFile(_duplicateFilePath);
+
+            // Act
+            var originalContent = _fileOperationService.GetFile(originalEntry);
+            var duplicateContent = _fileOperationService.GetFile(duplicateEntry);
+
+            // Assert
+            Assert.Equal(originalContent, duplicateContent);
+            Assert.Equal("Test file content", Encoding.UTF8.GetString(duplicateContent));
+        }
+
+        [Fact]
+        public void GetDuplicates_WithOriginalFile_ReturnsAllDuplicates()
+        {
+            // Arrange
+            var originalEntry = _fileOperationService.SaveFile(_testFilePath);
+            var duplicate1 = _fileOperationService.SaveFile(_duplicateFilePath);
+            var duplicate2 = _fileOperationService.SaveFile(_duplicateFilePath);
+
+            // Act
+            var duplicates = _fileOperationService.GetDuplicates(originalEntry);
+
+            // Assert
+            Assert.Equal(2, duplicates.Count);
+            Assert.Contains(duplicates, d => d.Id == duplicate1.Id);
+            Assert.Contains(duplicates, d => d.Id == duplicate2.Id);
+            Assert.All(duplicates, d => Assert.Equal(originalEntry.Id, d.OriginalFileId));
+        }
+
+        [Fact]
+        public void GetDuplicates_WithDuplicateFile_ReturnsOtherDuplicates()
+        {
+            // Arrange
+            var originalEntry = _fileOperationService.SaveFile(_testFilePath);
+            var duplicate1 = _fileOperationService.SaveFile(_duplicateFilePath);
+            var duplicate2 = _fileOperationService.SaveFile(_duplicateFilePath);
+
+            // Act
+            var duplicates = _fileOperationService.GetDuplicates(duplicate1);
+
+            // Assert
+            Assert.Equal(2, duplicates.Count);
+            Assert.Contains(duplicates, d => d.Id == duplicate1.Id);
+            Assert.Contains(duplicates, d => d.Id == duplicate2.Id);
         }
 
         [Fact]
@@ -264,6 +343,13 @@ namespace SmallBin.UnitTests
         {
             Assert.Throws<ArgumentNullException>(() => 
                 _fileOperationService.SaveFile(_testFilePath, contentType: invalidContentType));
+        }
+
+        [Fact]
+        public void GetDuplicates_WithNullEntry_ThrowsArgumentNullException()
+        {
+            Assert.Throws<ArgumentNullException>(() => 
+                _fileOperationService.GetDuplicates(null));
         }
     }
 }

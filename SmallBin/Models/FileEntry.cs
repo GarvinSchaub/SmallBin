@@ -89,5 +89,27 @@ namespace SmallBin.Models
         /// </summary>
         // ReSharper disable once InconsistentNaming
         public byte[] IV { get; set; } // Store IV for each file
+
+        /// <summary>
+        ///     Gets or sets the ID of the original file entry if this is a duplicate.
+        ///     If null, this entry is the original file.
+        /// </summary>
+        public string? OriginalFileId { get; set; }
+
+        /// <summary>
+        ///     Gets or sets the list of duplicate file entry IDs that reference this file.
+        ///     Only populated for original files (where OriginalFileId is null).
+        /// </summary>
+        public List<string> DuplicateFileIds { get; set; } = new List<string>();
+
+        /// <summary>
+        ///     Gets a value indicating whether this file entry is a duplicate of another file.
+        /// </summary>
+        public bool IsDuplicate => !string.IsNullOrEmpty(OriginalFileId);
+
+        /// <summary>
+        ///     Gets a value indicating whether this file entry has any duplicates.
+        /// </summary>
+        public bool HasDuplicates => DuplicateFileIds.Count > 0;
     }
 }
