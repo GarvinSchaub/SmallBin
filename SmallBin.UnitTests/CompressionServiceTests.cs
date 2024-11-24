@@ -1,4 +1,5 @@
 using System.Text;
+using System.IO.Compression;
 using SmallBin.Exceptions;
 using SmallBin.Services;
 
@@ -99,6 +100,46 @@ namespace SmallBin.UnitTests
 
             // Assert
             Assert.Equal(specialData, decompressed);
+        }
+
+        [Theory]
+        [InlineData(CompressionLevel.NoCompression)]
+        [InlineData(CompressionLevel.Fastest)]
+        [InlineData(CompressionLevel.Optimal)]
+        [InlineData(CompressionLevel.SmallestSize)]
+        public void Compress_WithDifferentLevels_ShouldMaintainDataIntegrity(CompressionLevel compressionLevel)
+        {
+            // Arrange
+            var data = Encoding.UTF8.GetBytes("Test data for compression with different levels");
+
+            // Act
+            var compressed = _compressionService.Compress(data, compressionLevel);
+            var decompressed = _compressionService.Decompress(compressed);
+
+            // Assert
+            Assert.Equal(data, decompressed);
+        }
+
+        [Fact]
+        public void Compress_DifferentLevels_ShouldProduceDifferentSizes()
+        {
+            // Arrange
+            var data = new byte[100000]; // Large data to make compression differences more noticeable
+            new Random(42).NextBytes(data);
+
+            // Act
+            var noCompression = _compressionService.Compress(data, CompressionLevel.NoCompression);
+            var fastest = _compressionService.Compress(data, CompressionLevel.Fastest);
+            var optimal = _compressionService.Compress(data, CompressionLevel.Optimal);
+            var smallest = _compressionService.Compress(data, CompressionLevel.SmallestSize);
+
+            // Assert
+            Assert.True(noCompression.Length >= fastest.Length, 
+                "NoCompression should result in larger or equal size compared to Fastest");
+            Assert.True(fastest.Length >= optimal.Length, 
+                "Fastest should result in larger or equal size compared to Optimal");
+            Assert.True(optimal.Length >= smallest.Length, 
+                "Optimal should result in larger or equal size compared to SmallestSize");
         }
     }
 }

@@ -10,23 +10,27 @@ namespace SmallBin.Services
     /// </summary>
     /// <remarks>
     ///     This service handles data compression to reduce storage space requirements.
-    ///     It uses GZip compression with optimal compression level to balance
-    ///     compression ratio and performance.
+    ///     It supports different compression levels to balance between compression ratio
+    ///     and performance based on specific needs.
     /// </remarks>
     internal class CompressionService
     {
         /// <summary>
-        ///     Compresses the provided data using GZip compression
+        ///     Compresses the provided data using GZip compression with specified compression level
         /// </summary>
         /// <param name="data">The data to compress</param>
+        /// <param name="compressionLevel">The compression level to use. Defaults to Optimal.</param>
         /// <returns>The compressed data as a byte array</returns>
         /// <exception cref="ArgumentException">Thrown when data is null or empty</exception>
         /// <exception cref="DatabaseOperationException">Thrown when compression fails</exception>
         /// <remarks>
-        ///     Uses optimal compression level to achieve maximum compression ratio
-        ///     while maintaining reasonable performance
+        ///     Supports different compression levels:
+        ///     - NoCompression: Fastest but no compression
+        ///     - Fastest: Quick compression with moderate ratio
+        ///     - Optimal: Best balance between speed and compression (default)
+        ///     - SmallestSize: Maximum compression but slower
         /// </remarks>
-        public byte[] Compress(byte[] data)
+        public byte[] Compress(byte[] data, CompressionLevel compressionLevel = CompressionLevel.Optimal)
         {
             if (data == null || data.Length == 0)
                 throw new ArgumentException("Cannot compress null or empty data", nameof(data));
@@ -34,7 +38,7 @@ namespace SmallBin.Services
             try
             {
                 using var compressedStream = new MemoryStream();
-                using (var gzipStream = new GZipStream(compressedStream, CompressionLevel.Optimal))
+                using (var gzipStream = new GZipStream(compressedStream, compressionLevel))
                 {
                     gzipStream.Write(data, 0, data.Length);
                 }
