@@ -12,13 +12,14 @@ namespace SmallBin.Services
     /// </summary>
     /// <remarks>
     ///     This service handles saving, retrieving, and updating files in the database.
-    ///     It coordinates encryption and compression operations, manages file metadata,
+    ///     It coordinates encryption, compression, and checksum operations, manages file metadata,
     ///     and provides logging of all file operations for security auditing.
     /// </remarks>
     internal class FileOperationService
     {
         private readonly EncryptionService _encryptionService;
         private readonly CompressionService _compressionService;
+        private readonly ChecksumService _checksumService;
         private readonly bool _useCompression;
         private readonly ILogger? _logger;
 
@@ -27,17 +28,20 @@ namespace SmallBin.Services
         /// </summary>
         /// <param name="encryptionService">The service used for encrypting and decrypting file content</param>
         /// <param name="compressionService">The service used for compressing and decompressing file content</param>
+        /// <param name="checksumService">The service used for calculating and verifying file checksums</param>
         /// <param name="useCompression">Whether to use compression for stored files</param>
         /// <param name="logger">Optional logger for tracking file operations</param>
-        /// <exception cref="ArgumentNullException">Thrown when encryptionService or compressionService is null</exception>
+        /// <exception cref="ArgumentNullException">Thrown when required services are null</exception>
         public FileOperationService(
             EncryptionService encryptionService,
             CompressionService compressionService,
+            ChecksumService checksumService,
             bool useCompression = true,
             ILogger? logger = null)
         {
             _encryptionService = encryptionService ?? throw new ArgumentNullException(nameof(encryptionService));
             _compressionService = compressionService ?? throw new ArgumentNullException(nameof(compressionService));
+            _checksumService = checksumService ?? throw new ArgumentNullException(nameof(checksumService));
             _useCompression = useCompression;
             _logger = logger;
         }
@@ -54,6 +58,7 @@ namespace SmallBin.Services
         /// <exception cref="FileValidationException">Thrown when attempting to save an empty file</exception>
         /// <remarks>
         ///     The file content is optionally compressed and always encrypted before storage.
+        ///     A checksum is calculated on the original content for integrity verification.
         ///     Each file gets a unique ID and maintains creation/update timestamps.
         /// </remarks>
         public FileEntry SaveFile(string filePath, List<string>? tags = null, string contentType = "application/octet-stream")
@@ -77,6 +82,10 @@ namespace SmallBin.Services
 
             var fileContent = File.ReadAllBytes(filePath);
 
+            // Calculate checksum on original content
+            _logger?.Debug("Calculating file checksum");
+            string checksum = _checksumService.CalculateChecksum(fileContent);
+
             if (_useCompression)
             {
                 _logger?.Debug("Compressing file content");
@@ -96,7 +105,9 @@ namespace SmallBin.Services
                 ContentType = contentType,
                 IsCompressed = _useCompression,
                 EncryptedContent = encryptedContent,
-                IV = iv
+                IV = iv,
+                Checksum = checksum,
+                ChecksumAlgorithm = "SHA256" // Using SHA256 as the default algorithm
             };
 
             _logger?.Info($"File saved successfully. ID: {entry.Id}");
@@ -110,9 +121,10 @@ namespace SmallBin.Services
         /// <returns>The decrypted and decompressed file content as a byte array</returns>
         /// <exception cref="ArgumentNullException">Thrown when entry is null</exception>
         /// <exception cref="DatabaseEncryptionException">Thrown when decryption fails</exception>
-        /// <exception cref="DatabaseCorruptException">Thrown when decompression fails due to corrupted data</exception>
+        /// <exception cref="DatabaseCorruptException">Thrown when decompression fails or checksum verification fails</exception>
         /// <remarks>
         ///     The file content is first decrypted and then decompressed (if compression was used).
+        ///     The file's integrity is verified using its stored checksum.
         ///     All operations are logged for security auditing purposes.
         /// </remarks>
         public byte[] GetFile(FileEntry entry)
@@ -144,6 +156,14 @@ namespace SmallBin.Services
                 {
                     throw new DatabaseCorruptException($"Failed to decompress file: {entry.FileName}", ex);
                 }
+            }
+
+            // Verify file integrity
+            _logger?.Debug("Verifying file integrity");
+            if (!_checksumService.VerifyIntegrity(entry, decryptedContent))
+            {
+                _logger?.Error($"Checksum verification failed for file: {entry.FileName}");
+                throw new DatabaseCorruptException($"File integrity verification failed: {entry.FileName}");
             }
 
             _logger?.Info($"File retrieved successfully: {entry.FileName}");

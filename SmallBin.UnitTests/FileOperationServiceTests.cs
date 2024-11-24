@@ -1,8 +1,10 @@
+using System;
 using System.Security.Cryptography;
 using System.Text;
 using SmallBin.Exceptions;
 using SmallBin.Logging;
 using SmallBin.Services;
+using Xunit;
 
 namespace SmallBin.UnitTests
 {
@@ -12,6 +14,7 @@ namespace SmallBin.UnitTests
         private readonly TestLogger _logger;
         private readonly EncryptionService _encryptionService;
         private readonly CompressionService _compressionService;
+        private readonly ChecksumService _checksumService;
         private readonly FileOperationService _fileOperationService;
         private readonly byte[] _testKey;
 
@@ -27,7 +30,8 @@ namespace SmallBin.UnitTests
             RandomNumberGenerator.Fill(_testKey);
             _encryptionService = new EncryptionService(_testKey);
             _compressionService = new CompressionService();
-            _fileOperationService = new FileOperationService(_encryptionService, _compressionService, true, _logger);
+            _checksumService = new ChecksumService();
+            _fileOperationService = new FileOperationService(_encryptionService, _compressionService, _checksumService, true, _logger);
         }
 
         public void Dispose()
@@ -59,19 +63,31 @@ namespace SmallBin.UnitTests
         public void Constructor_WithNullEncryptionService_ThrowsArgumentNullException()
         {
             Assert.Throws<ArgumentNullException>(() => 
-                new FileOperationService(null, _compressionService));
+                new FileOperationService(null, _compressionService, _checksumService));
         }
 
         [Fact]
         public void Constructor_WithNullCompressionService_ThrowsArgumentNullException()
         {
             Assert.Throws<ArgumentNullException>(() => 
-                new FileOperationService(_encryptionService, null));
+                new FileOperationService(_encryptionService, null, _checksumService));
         }
 
         [Fact]
-        public void SaveFile_WithValidFile_CreatesFileEntry()
+        public void Constructor_WithNullChecksumService_ThrowsArgumentNullException()
         {
+            Assert.Throws<ArgumentNullException>(() => 
+                new FileOperationService(_encryptionService, _compressionService, null));
+        }
+
+        [Fact]
+        public void SaveFile_WithValidFile_CreatesFileEntryWithChecksum()
+        {
+            // Arrange
+            var content = "Test file content";
+            File.WriteAllText(_testFilePath, content);
+            var expectedChecksum = _checksumService.CalculateChecksum(Encoding.UTF8.GetBytes(content));
+
             // Act
             var entry = _fileOperationService.SaveFile(_testFilePath, new List<string> { "test" }, "text/plain");
 
@@ -84,20 +100,25 @@ namespace SmallBin.UnitTests
             Assert.NotNull(entry.EncryptedContent);
             Assert.NotNull(entry.IV);
             Assert.True(entry.FileSize > 0);
+            Assert.Equal(expectedChecksum, entry.Checksum);
+            Assert.Equal("SHA256", entry.ChecksumAlgorithm);
             Assert.Contains(_logger.LogMessages, m => m.StartsWith("INFO: Saving file:"));
+            Assert.Contains(_logger.LogMessages, m => m.StartsWith("DEBUG: Calculating file checksum"));
         }
 
         [Fact]
         public void SaveFile_WithoutCompression_CreatesUncompressedFileEntry()
         {
             // Arrange
-            var service = new FileOperationService(_encryptionService, _compressionService, false, _logger);
+            var service = new FileOperationService(_encryptionService, _compressionService, _checksumService, false, _logger);
 
             // Act
             var entry = service.SaveFile(_testFilePath);
 
             // Assert
             Assert.False(entry.IsCompressed);
+            Assert.NotNull(entry.Checksum);
+            Assert.Equal("SHA256", entry.ChecksumAlgorithm);
         }
 
         [Theory]
@@ -130,6 +151,7 @@ namespace SmallBin.UnitTests
             // Assert
             Assert.Equal(originalContent, Encoding.UTF8.GetString(retrievedContent));
             Assert.Contains(_logger.LogMessages, m => m.StartsWith("DEBUG: Retrieving file:"));
+            Assert.Contains(_logger.LogMessages, m => m.StartsWith("DEBUG: Verifying file integrity"));
         }
 
         [Fact]
@@ -140,7 +162,7 @@ namespace SmallBin.UnitTests
         }
 
         [Fact]
-        public void GetFile_WithCorruptedContent_ThrowsDatabaseCorruptException()
+        public void GetFile_WithCorruptedContent_ThrowsDatabaseEncryptionException()
         {
             // Arrange
             var entry = _fileOperationService.SaveFile(_testFilePath);
@@ -149,6 +171,26 @@ namespace SmallBin.UnitTests
             // Act & Assert
             Assert.Throws<DatabaseEncryptionException>(() => 
                 _fileOperationService.GetFile(entry));
+        }
+
+        [Fact]
+        public void GetFile_WithModifiedContent_ThrowsDatabaseCorruptException()
+        {
+            // Arrange
+            var entry = _fileOperationService.SaveFile(_testFilePath);
+            
+            // Modify the content after encryption to simulate corruption
+            using var ms = new MemoryStream(entry.EncryptedContent);
+            ms.Position = entry.EncryptedContent.Length / 2;
+            ms.WriteByte(0xFF);
+            entry.EncryptedContent = ms.ToArray();
+
+            // Act & Assert
+            var exception = Assert.Throws<DatabaseCorruptException>(() => 
+                _fileOperationService.GetFile(entry));
+            
+            Assert.Contains("File integrity verification failed", exception.Message);
+            Assert.Contains(_logger.LogMessages, m => m.StartsWith("ERROR: Checksum verification failed"));
         }
 
         [Fact]

@@ -52,6 +52,18 @@ namespace SmallBin.Models
         public string ContentType { get; set; }
 
         /// <summary>
+        ///     Gets or sets the checksum of the original file content before encryption.
+        ///     This is used for file integrity verification.
+        /// </summary>
+        public string Checksum { get; set; }
+
+        /// <summary>
+        ///     Gets or sets the algorithm used to generate the checksum.
+        ///     Common values include "SHA256", "SHA512", "MD5", etc.
+        /// </summary>
+        public string ChecksumAlgorithm { get; set; }
+
+        /// <summary>
         ///     Indicates whether the file content is compressed before encryption.
         ///     If set to true, the file content was compressed; otherwise, it was not.
         /// </summary>
