@@ -103,6 +103,29 @@ namespace SmallBin.Models
         public List<string> DuplicateFileIds { get; set; } = new List<string>();
 
         /// <summary>
+        ///     Gets or sets the version number of this file entry.
+        ///     Version numbers start at 1 and increment with each version.
+        /// </summary>
+        public int Version { get; set; } = 1;
+
+        /// <summary>
+        ///     Gets or sets the ID of the base file entry if this is a version.
+        ///     If null, this entry is the base file.
+        /// </summary>
+        public string? BaseFileId { get; set; }
+
+        /// <summary>
+        ///     Gets or sets the list of version file entry IDs that reference this file.
+        ///     Only populated for base files (where BaseFileId is null).
+        /// </summary>
+        public List<string> VersionIds { get; set; } = new List<string>();
+
+        /// <summary>
+        ///     Gets or sets the comment associated with this version.
+        /// </summary>
+        public string? VersionComment { get; set; }
+
+        /// <summary>
         ///     Gets a value indicating whether this file entry is a duplicate of another file.
         /// </summary>
         public bool IsDuplicate => !string.IsNullOrEmpty(OriginalFileId);
@@ -111,5 +134,15 @@ namespace SmallBin.Models
         ///     Gets a value indicating whether this file entry has any duplicates.
         /// </summary>
         public bool HasDuplicates => DuplicateFileIds.Count > 0;
+
+        /// <summary>
+        ///     Gets a value indicating whether this file entry is a version of another file.
+        /// </summary>
+        public bool IsVersion => !string.IsNullOrEmpty(BaseFileId);
+
+        /// <summary>
+        ///     Gets a value indicating whether this file entry has any versions.
+        /// </summary>
+        public bool HasVersions => VersionIds.Count > 0;
     }
 }
